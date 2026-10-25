@@ -7,7 +7,9 @@ Friend Module ModSecret
     '在开源版的注册表与常规版的注册表隔离，以防数据冲突
     Public Const RegFolder As String = "PCLDebug"
     '用于微软登录的 ClientId
-    Public OAuthClientId As String = If(Environment.GetEnvironmentVariable("PCL_MS_CLIENT_ID"), "")
+    '本修改版自有的 Azure 应用（公开客户端，无 secret，Client ID 属公开信息）
+    '环境变量 PCL_MS_CLIENT_ID 仍然优先，便于临时切换测试
+    Public OAuthClientId As String = If(Environment.GetEnvironmentVariable("PCL_MS_CLIENT_ID"), "504721c5-1f26-4d60-afa4-ae3f4b65be64")
     'CurseForge API Key
     Public CurseForgeAPIKey As String = If(Environment.GetEnvironmentVariable("PCL_CURSEFORGE_API_KEY"), "")
     '用于匿名数据收集的腾讯云日志服务上报 URL，形如 https://{region}.cls.tencentcs.com/track?topic_id={topic_id}
@@ -545,7 +547,7 @@ Friend Module ModSecret
             Body("nonce") = Nonce
             Dim Resp As String = NetRequestByClient(OtaBase & "auth", HttpMethod.Post,
                                                     Body.ToString(Formatting.None), "application/json",
-                                                    RequireJson:=True, Timeout:=8000)
+                                                    RequireJson:=True, Timeout:=15000)
             Obj = JObject.Parse(Resp)
         Catch ex As Exception
             Logger.Warn(ex, "授权服务器不可达")
@@ -642,8 +644,8 @@ Friend Module ModSecret
                 End Sub)
             Bg.IsBackground = True
             Bg.Start()
-            If Not Bg.Join(15000) Then
-                Logger.Warn("授权校验超时（15 秒）")
+            If Not Bg.Join(20000) Then
+                Logger.Warn("授权校验超时（20 秒）")
                 Result = 0
             End If
             Select Case Result

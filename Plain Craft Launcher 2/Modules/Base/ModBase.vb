@@ -8,10 +8,13 @@ Public Module ModBase
     '下列版本信息由更新器自动修改
     Public Const VersionBaseName As String = "2.13.0.1" '显示用版本名
     Public Const CommitHash As String = "" 'Commit Hash，由 GitHub Workflow 自动替换
+    'VersionCode 跟随本修改版自己的发布节奏递增：
+    '  每次发布 +1；新增功能或较大改动可 +2 ~ +5。
+    '  VersionBaseName 保持上游的 2.13.0.1 不变。
 #If RELEASE Then
-    Public Const VersionCode As Integer = 406 '正式版
+    Public Const VersionCode As Integer = 408 '正式版
 #Else
-    Public Const VersionCode As Integer = 407 '快照版
+    Public Const VersionCode As Integer = 409 '快照版
 #End If
 
     '版本信息
