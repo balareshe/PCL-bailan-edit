@@ -1015,6 +1015,16 @@ Retry:
             If ex.StatusCode = 429 Then
                 Logger.Warn(ex, "微软登录第 4 步汇报 429")
                 Throw New Exception("$登录尝试太过频繁，请等待几分钟后再试！")
+            ElseIf ex.StatusCode = HttpStatusCode.Forbidden AndAlso
+                   ex.Response?.Contains("Invalid app registration") Then
+                'Mojang 明确回了「应用未授权」，与 IP、VPN 无关，不能误导用户去关代理
+                Logger.Warn(ex, "微软登录第 4 步汇报 403：Invalid app registration（应用未获 Minecraft API 授权）")
+                Throw New Exception(
+                    "$微软登录第 4 步失败：启动器的应用未获得 Minecraft API 授权。" & vbCrLf &
+                    "这不是网络或 VPN 问题——Mojang 返回的是 Invalid app registration，" & vbCrLf &
+                    "表示该应用（Client ID）尚未加入 api.minecraftservices.com 的白名单。" & vbCrLf & vbCrLf &
+                    "如果你只是使用者，请联系本修改版的维护者。" & vbCrLf &
+                    "如果你是维护者，请提交申请：https://aka.ms/AppRegInfo")
             ElseIf ex.StatusCode = HttpStatusCode.Forbidden Then
                 Logger.Warn(ex, "微软登录第 4 步汇报 403")
                 Throw New Exception("$当前 IP 的登录尝试异常。" & vbCrLf & "如果你使用了 VPN 或加速器，请把它们关掉或更换节点后再试！")
