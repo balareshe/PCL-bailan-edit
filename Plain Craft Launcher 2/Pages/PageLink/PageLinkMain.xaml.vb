@@ -441,6 +441,16 @@ Public Class PageLinkMain
            VersionCode < ServerConfig("Link")("MinVersionCode").ToObject(Of Integer) Then
             Throw New Exception("$你的 PCL 版本太老了，请在更新 PCL 之后再联机！")
         End If
+        '提前校验中继节点：避免用户先白等约 30 MB 的联机模块下载，
+        '下载完才被告知必须去填节点地址。
+        If String.IsNullOrWhiteSpace(Settings.Get(Of String)("LinkCustomPeer")) AndAlso
+           ServerConfig("Link")("Peers").Count() = 0 Then
+            Throw New Exception(
+                $"$本版本没有内置公共中继节点。{vbCrLf}{vbCrLf}" &
+                $"请先在 {vbLQ}设置 → 联机 → 自定义节点{vbRQ} 中填写中继地址，{vbCrLf}" &
+                $"格式为 udp://节点地址:端口 或 tcp://节点地址:端口。{vbCrLf}{vbCrLf}" &
+                $"房主与所有加入者必须填写至少一个相同的节点。")
+        End If
     End Sub
 
     '2. 获取需要下载的文件
