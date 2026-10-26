@@ -502,7 +502,14 @@ Public Class PageLinkMain
         UpdateLoadingPage("正在获取节点列表……", "获取节点列表")
         Dim RawPeers As List(Of String)
         Dim CustomPeers As String = Settings.Get(Of String)("LinkCustomPeer")
+        Dim ConfigPeerCount As Integer = ServerConfig("Link")("Peers").Count()
         If String.IsNullOrWhiteSpace(CustomPeers) Then
+            If ConfigPeerCount = 0 Then
+                '本修改版没有内置公共中继节点，必须由用户填写
+                Panic("未填写自定义节点设置",
+                    $"$本版本没有内置公共中继节点。{vbCrLf}请先在 {vbLQ}设置 → 联机 → 自定义节点{vbRQ} 中填写中继地址，{vbCrLf}例如 tcp://中继地址:11010。{vbCrLf}房主与所有加入者必须填写完全相同的内容！")
+                Return
+            End If
             If DiscoverNodeID = -2 AndAlso Not IsServerSide Then
                 Panic("未填写自定义节点设置", $"$你必须在 {vbLQ}自定义节点{vbRQ} 设置中填写与房主相同的内容，{vbCrLf}才能进入该房间！")
                 Return
@@ -690,7 +697,7 @@ ForcedPass:
         FinalPeers.AddRange(ServerConfig("Link")("MandatoryPeers").Select(Function(p) p.ToString))
         '结束
         DiscoverNodeID = FinalDiscoverID
-        Return FinalPeers.Distinct.ToList
+        Return FinalPeers.Where(Function(p) Not String.IsNullOrWhiteSpace(p)).Distinct.ToList
     End Function
 
 #End Region

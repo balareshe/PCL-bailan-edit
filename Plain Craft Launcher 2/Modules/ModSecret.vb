@@ -402,6 +402,23 @@ Friend Module ModSecret
     ''' 拉取启动器公告，只在与上次已读的不同时弹窗提示。
     ''' </summary>
     Friend Sub RefreshServerConfig()
+        '联机（EasyTier）配置。
+        '节点列表 API（uptime.easytier.cn）已下线，本修改版不内置任何公共中继地址，
+        '而是由用户在「设置 → 联机 → 自定义节点」中填写。
+        'Peers 留空时联机页会提示用户去填写，不会带着空地址强行启动 EasyTier。
+        'EasyTier 为 LGPL-3.0，二进制直接从官方 GitHub Release 下载，不随本仓库分发。
+        ServerConfig = New JObject(
+            New JProperty("Link", New JObject(
+                New JProperty("EasyTierVersion", 2),
+                New JProperty("Downloads", New JArray(
+                    "https://github.com/EasyTier/EasyTier/releases/download/v2.6.4/easytier-windows-{arch}-v2.6.4.zip")),
+                New JProperty("Argument", ""),
+                New JProperty("Peers", New JArray()),
+                New JProperty("MandatoryPeers", New JArray()),
+                New JProperty("PeersBlackList", New JArray()),
+                New JProperty("RandomPeer", 0),
+                New JProperty("DiscoverPeerId", 0),
+                New JProperty("DiscoverPeer", ""))))
         Try
             Dim Raw As String = NetRequestByClient(OtaBase & "notice.json", RequireJson:=False)
             Dim Obj As JObject = JObject.Parse(Raw)
