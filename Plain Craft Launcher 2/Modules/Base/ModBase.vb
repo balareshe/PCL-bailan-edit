@@ -12,9 +12,9 @@ Public Module ModBase
     '  每次发布 +1；新增功能或较大改动可 +2 ~ +5。
     '  VersionBaseName 保持上游的 2.13.0.1 不变。
 #If RELEASE Then
-    Public Const VersionCode As Integer = 414 '正式版
+    Public Const VersionCode As Integer = 415 '正式版
 #Else
-    Public Const VersionCode As Integer = 415 '快照版
+    Public Const VersionCode As Integer = 416 '快照版
 #End If
 
     '版本信息
