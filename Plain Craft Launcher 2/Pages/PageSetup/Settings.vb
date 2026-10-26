@@ -315,9 +315,12 @@ Public Class Settings
         Dim Value = Entry.GetCache(Instance)
         If Value IsNot Nothing Then Return Value
         '对部分设置强制赋值
+        '本修改版恢复了联机功能，所以不再强制隐藏联机页与联机设置页。
+        '保留强制赋值但改为 False，可以一并覆盖旧版本残留在本地的隐藏记录，
+        '不需要额外的迁移逻辑。
         Static ForcedSettings As New Dictionary(Of String, Object) From {
-            {"UiHiddenPageLink", True},
-            {"UiHiddenSetupLink", True}
+            {"UiHiddenPageLink", False},
+            {"UiHiddenSetupLink", False}
         }
         Dim ForcedSetting As Object = Nothing
         If ForcedSettings.TryGetValue(Key, ForcedSetting) Then
