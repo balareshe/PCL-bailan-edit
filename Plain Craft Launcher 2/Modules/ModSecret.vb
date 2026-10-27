@@ -489,15 +489,15 @@ Friend Module ModSecret
     ''' 若 OTA 上提供了 link.json，会用它覆盖这里的默认值，这样改节点不用重新编译。
     ''' </summary>
     Friend Function LinkNodesDefault() As JArray
-        '同一台机器的两个公网 IP，客户端会同时连接：一条被墙或丢包时自动走另一条。
+        '该机器有两个公网 IP（.100 与 .188），但实测 .188 的 TCP 握手延迟中位数是
+        '185 ms，约为 .100（55 ms）的 3.4 倍，且会触发 EasyTier 的握手超时
+        '（约 330 ms），建连阶段反复重试、拖慢房间建立。
+        '因此默认只保留 .100。若哪天 .100 被墙，把下面这段替换成 .188 的地址即可。
+        '客户端会同时连接数组里的所有节点，需要冗余时往这里再加一条。
         Return New JArray(
             New JObject(
                 New JProperty("name", "香港精品节点"),
                 New JProperty("address", "tcp://154.219.106.100:11010"),
-                New JProperty("expiresAt", "2027-01-02 18:38")),
-            New JObject(
-                New JProperty("name", "香港精品节点（备用线路）"),
-                New JProperty("address", "tcp://154.219.106.188:11010"),
                 New JProperty("expiresAt", "2027-01-02 18:38")))
     End Function
 
