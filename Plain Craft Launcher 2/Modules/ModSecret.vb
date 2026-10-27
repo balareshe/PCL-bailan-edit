@@ -406,10 +406,15 @@ Friend Module ModSecret
     ''' 若 OTA 上提供了 link.json，会用它覆盖这里的默认值，这样改节点不用重新编译。
     ''' </summary>
     Friend Function LinkNodesDefault() As JArray
+        '同一台机器的两个公网 IP，客户端会同时连接：一条被墙或丢包时自动走另一条。
         Return New JArray(
             New JObject(
                 New JProperty("name", "香港精品节点"),
                 New JProperty("address", "tcp://154.219.106.100:11010"),
+                New JProperty("expiresAt", "2027-01-02 18:38")),
+            New JObject(
+                New JProperty("name", "香港精品节点（备用线路）"),
+                New JProperty("address", "tcp://154.219.106.188:11010"),
                 New JProperty("expiresAt", "2027-01-02 18:38")))
     End Function
 
