@@ -229,7 +229,19 @@ Friend Module ModSecret
     ''' <summary>
     ''' 检查更新。有新版则询问、下载、校验 SHA256，然后重启自身完成替换。
     ''' </summary>
+    ''' <summary>更新检查的并发闸门：自动检查与手动检查可能同时触发。</summary>
+    Private UpdateCheckGate As New Object
+    Private UpdateChecking As Boolean = False
+
     Friend Sub UpdateCheckByButton(Optional Silent As Boolean = False)
+        '两个入口同时跑会把同一个 LatestOta.exe 边删边写，导致校验失败或弹两次窗
+        SyncLock UpdateCheckGate
+            If UpdateChecking Then
+                Logger.Info("已有更新检查在进行中，跳过本次")
+                Return
+            End If
+            UpdateChecking = True
+        End SyncLock
         If Not Silent Then Hint("正在检查更新……")
         RunInNewThread(
             Sub()
@@ -303,6 +315,10 @@ Friend Module ModSecret
                         Logger.Error(ex, "检查更新失败")
                         RunInUiWait(Sub() Hint("检查更新失败：" & ex.Message))
                     End If
+                Finally
+                    SyncLock UpdateCheckGate
+                        UpdateChecking = False
+                    End SyncLock
                 End Try
             End Sub, "检查更新")
     End Sub
@@ -340,9 +356,19 @@ Friend Module ModSecret
                 Return
             End If
             IsUpdateWaitingRestart = False
-            Dim Args As String = $"--update {Process.GetCurrentProcess().Id} ""{PathExe}"" ""{Latest}"" True"
-            Logger.Info($"启动更新程序：{Latest} {Args}")
-            StartProcess(Latest, Args)
+            '优先把更新程序放到启动器同目录再运行：未签名 exe 从 %TEMP% 启动容易被
+            '杀软/系统策略拦住，放在目标目录里成功率更高。失败则退回临时目录。
+            Dim UpdaterPath As String = Latest
+            Try
+                Dim StagedUpdater As String = IO.Path.Combine(IO.Path.GetDirectoryName(PathExe), "PCL2_updater.exe")
+                File.Copy(Latest, StagedUpdater, True)
+                UpdaterPath = StagedUpdater
+            Catch ex As Exception
+                Logger.Warn(ex, "无法把更新程序复制到启动器目录，改为从临时目录运行")
+            End Try
+            Dim Args As String = $"--update {Process.GetCurrentProcess().Id} ""{PathExe}"" ""{UpdaterPath}"" True"
+            Logger.Info($"启动更新程序：{UpdaterPath} {Args}")
+            StartProcess(UpdaterPath, Args)
             If TriggerRestartAndByEnd Then RunInUiWait(Sub() FormMain.EndProgramForce())
         Catch ex As Exception
             Logger.Error(ex, "启动更新程序失败")
@@ -364,12 +390,27 @@ Friend Module ModSecret
             End Try
             Thread.Sleep(400)
 
-            '2. 替换文件。旧进程刚退出时文件锁可能还没释放，这里做几次重试
+            '2. 替换文件。旧进程刚退出时文件锁可能还没释放，这里做几次重试。
+            '注意顺序：先把新文件拷贝到同目录的临时名，再覆盖旧文件。
+            '原实现是「先删旧文件、再拷贝」，一旦拷贝失败（杀软占用等），
+            '启动器本体就没了——这是不可接受的。
+            Dim StagedFile As String = OldFileName & ".new"
+            Dim BackupFile As String = OldFileName & ".bak"
+            Try
+                File.Copy(NewFileName, StagedFile, True)
+            Catch ex As Exception
+                Logger.Error(ex, $"无法把更新文件拷贝到启动器目录：{ex.Message}")
+                MsgBox("自动更新失败：无法把更新文件写入启动器目录。" & vbCrLf &
+                       "请把下面这个文件手动复制过去覆盖原文件：" & vbCrLf & NewFileName & vbCrLf & "→" & vbCrLf & OldFileName,
+                       MsgBoxStyle.Critical, "更新失败")
+                Return
+            End Try
+
             Dim Replaced As Boolean = False
             For i = 1 To 20
                 Try
-                    If FileUtils.Exists(OldFileName) Then FileUtils.Delete(OldFileName)
-                    File.Copy(NewFileName, OldFileName, True)
+                    If FileUtils.Exists(OldFileName) Then File.Copy(OldFileName, BackupFile, True)
+                    File.Copy(StagedFile, OldFileName, True)
                     Replaced = True
                     Exit For
                 Catch ex As Exception
@@ -377,14 +418,28 @@ Friend Module ModSecret
                     Thread.Sleep(300)
                 End Try
             Next
+            Try
+                FileUtils.Delete(StagedFile)
+            Catch
+            End Try
 
             If Not Replaced Then
                 Logger.Error($"替换启动器文件失败：{NewFileName} → {OldFileName}")
+                Dim Extra As String = If(FileUtils.Exists(BackupFile), vbCrLf & vbCrLf & "原文件已备份到：" & vbCrLf & BackupFile, "")
                 MsgBox("自动更新失败，请手动复制以下文件并覆盖原文件：" & vbCrLf &
-                       NewFileName & vbCrLf & "→" & vbCrLf & OldFileName, MsgBoxStyle.Critical, "更新失败")
+                       NewFileName & vbCrLf & "→" & vbCrLf & OldFileName & Extra, MsgBoxStyle.Critical, "更新失败")
                 Return
             End If
             Logger.Info($"已替换启动器文件：{OldFileName}")
+            '成功后清理更新程序副本与备份
+            Try
+                If NewFileName <> OldFileName Then FileUtils.Delete(NewFileName)
+            Catch
+            End Try
+            Try
+                FileUtils.Delete(BackupFile)
+            Catch
+            End Try
 
             '3. 按需重启
             If TriggerRestart Then StartProcess(OldFileName)
