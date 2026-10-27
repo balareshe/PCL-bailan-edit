@@ -265,7 +265,9 @@ Friend Module ModSecret
                     Dim Latest As String = PathTemp & UpdateFileName
                     FileUtils.Delete(Latest)
                     RunInUiWait(Sub() Hint("正在下载更新包……"))
-                    NetDownloadByClient(Obj("url").ToString(), Latest)
+                    '更新包约 5.5 MB，默认 25 秒超时在慢速链路上必然失败（重试 3 次也全超时）。
+                    '这里放宽到 120 秒，配合 NetDownloadByClient 自带的 3 次重试。
+                    NetDownloadByClient(Obj("url").ToString(), Latest, Timeout:=120000)
 
                     '大小校验
                     Dim ExpectSize As Long = If(Obj("size") IsNot Nothing, Obj("size").ToObject(Of Long)(), 0L)

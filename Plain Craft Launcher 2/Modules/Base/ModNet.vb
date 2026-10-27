@@ -169,12 +169,13 @@ RequestFinished:
     ''' 通过网络请求直接下载小文件，若文件已存在将被覆盖。
     ''' 不建议用于下载大文件。
     ''' </summary>
-    Public Sub NetDownloadByClient(Url As String, LocalPath As String, Optional SimulateBrowserHeaders As Boolean = False)
+    Public Sub NetDownloadByClient(Url As String, LocalPath As String, Optional SimulateBrowserHeaders As Boolean = False,
+                                    Optional Timeout As Integer = 25000)
         Logger.Info($"通过网络请求直接下载小文件：{Url} → {LocalPath}")
         Dim RetryCount As Integer = 0
 Retry:
         Try
-            FileUtils.Write(LocalPath, SendRequest(Url, HttpMethod.Get, SimulateBrowserHeaders:=SimulateBrowserHeaders))
+            FileUtils.Write(LocalPath, SendRequest(Url, HttpMethod.Get, SimulateBrowserHeaders:=SimulateBrowserHeaders, Timeout:=Timeout))
         Catch ex As Exception
             FileUtils.Delete(LocalPath)
             ex.ThrowIfCanceled()
