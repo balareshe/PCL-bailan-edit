@@ -434,6 +434,8 @@ Public Class FormMain
         End Sub, "初始化", ThreadPriority.Lowest)
 
         Logger.Info($"第三阶段加载用时：{GetTimeMs() - ApplicationStartTick} ms")
+        '启动后静默检查一次更新，有新版本才弹窗
+        UpdateCheckAuto()
     End Sub
     '根据打开次数触发的事件
     Private Sub RunCountSub()

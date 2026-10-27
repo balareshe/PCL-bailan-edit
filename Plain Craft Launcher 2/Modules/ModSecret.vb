@@ -229,8 +229,8 @@ Friend Module ModSecret
     ''' <summary>
     ''' 检查更新。有新版则询问、下载、校验 SHA256，然后重启自身完成替换。
     ''' </summary>
-    Friend Sub UpdateCheckByButton()
-        Hint("正在检查更新……")
+    Friend Sub UpdateCheckByButton(Optional Silent As Boolean = False)
+        If Not Silent Then Hint("正在检查更新……")
         RunInNewThread(
             Sub()
                 Try
@@ -241,7 +241,7 @@ Friend Module ModSecret
                     Dim ForceUpdate As Boolean = Obj("force") IsNot Nothing AndAlso Obj("force").ToObject(Of Boolean)()
 
                     If Code <= VersionCode Then
-                        RunInUiWait(Sub() Hint($"当前已是最新版本（{VersionBaseName}）"))
+                        If Not Silent Then RunInUiWait(Sub() Hint($"当前已是最新版本（{VersionBaseName}）"))
                         Return
                     End If
 
@@ -295,10 +295,36 @@ Friend Module ModSecret
                     IsUpdateWaitingRestart = True
                     UpdateRestart(True)
                 Catch ex As Exception
-                    Logger.Error(ex, "检查更新失败")
-                    RunInUiWait(Sub() Hint("检查更新失败：" & ex.Message))
+                    If Silent Then
+                        Logger.Warn(ex, "自动检查更新失败（静默）")
+                    Else
+                        Logger.Error(ex, "检查更新失败")
+                        RunInUiWait(Sub() Hint("检查更新失败：" & ex.Message))
+                    End If
                 End Try
             End Sub, "检查更新")
+    End Sub
+
+    ''' <summary>
+    ''' 启动后静默检查更新：只有发现新版本时才会弹窗，已是最新或网络失败都不打扰用户。
+    ''' </summary>
+    Friend Sub UpdateCheckAuto()
+        RunInNewThread(
+            Sub()
+                Threading.Thread.Sleep(6000) '等启动动画与各加载器稳定
+                Try
+                    Dim Obj As JObject = GetOtaVersion()
+                    Dim Code As Integer = Obj("versionCode").ToObject(Of Integer)()
+                    If Code <= VersionCode Then
+                        Logger.Info($"自动检查更新：已是最新（{VersionBaseName} / {VersionCode}）")
+                        Return
+                    End If
+                    Logger.Info($"自动检查更新：发现 {Obj("versionName")}（{Code}）")
+                    UpdateCheckByButton(False)
+                Catch ex As Exception
+                    Logger.Warn(ex, "自动检查更新失败")
+                End Try
+            End Sub, "自动检查更新")
     End Sub
 
     ''' <summary>
