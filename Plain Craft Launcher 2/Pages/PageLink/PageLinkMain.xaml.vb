@@ -425,6 +425,34 @@ Public Class PageLinkMain
 
     '1. 获取服务器配置
     Private Sub InitConfig(Task As LoaderTask(Of Integer, Integer))
+        '联机必须提权：创建 TUN 虚拟网卡、写防火墙规则都需要管理员权限，
+        '否则 EasyTier 会直接报 "tun device error" / 0x80070005 然后崩溃。
+        '这里在做任何事之前先检查，并提供「以管理员身份重启」。
+        If Not WindowsUtils.HasAdminRole() Then
+            Dim Choice As Integer = RunInUiWait(Function() MyMsgBox(
+                $"$联机功能需要管理员权限。{vbCrLf}{vbCrLf}" &
+                $"创建虚拟网卡和写入防火墙规则都必须提权，否则联机模块会直接崩溃。{vbCrLf}{vbCrLf}" &
+                $"是否以管理员身份重新启动 PCL？重启后请重新点击「联机」。",
+                "需要管理员权限", "以管理员重启", "取消", IsWarn:=True))
+            If Choice <> 1 Then
+                Throw New Exception(
+                    $"$未授予管理员权限，无法启动联机模块。{vbCrLf}{vbCrLf}" &
+                    $"右键 PCL 选择「以管理员身份运行」，{vbCrLf}" &
+                    $"或在 属性 → 兼容性 中勾选「以管理员身份运行此程序」，以后就不必每次授权。")
+            End If
+            Try
+                Diagnostics.Process.Start(New Diagnostics.ProcessStartInfo(PathExe) With {.Verb = "runas"})
+            Catch ex As Exception
+                Logger.Warn(ex, "以管理员身份重启失败")
+                Throw New Exception(
+                    $"$未能以管理员身份重启（可能取消了 UAC 授权）。{vbCrLf}" &
+                    $"请手动右键 PCL → 以管理员身份运行。")
+            End Try
+            '新实例会在单实例互斥上最多等 10 秒，这里退出让出锁
+            RunInUiWait(Sub() FormMain.EndProgramForce(ProcessReturnValues.TaskDone))
+            Throw New OperationCanceledException
+        End If
+
         UpdateLoadingPage("正在联网获取配置……", "联网获取配置")
         '本修改版在 ModSecret.RefreshServerConfig 中自行填充 ServerConfig，
         '所以开源分支同样可以继续联机流程，不再因为分支名而直接拒绝。
