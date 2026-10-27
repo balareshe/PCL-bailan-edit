@@ -582,6 +582,11 @@ Public Class PageLinkMain
                 Return
             End If
             RawPeers = BuiltinPeers
+            '内置中继是直连，本来就没有「发现节点」这个概念，DiscoverNodeID 会停在 -1。
+            '但 GetInviteCode 会把 -1 编码成 0（末尾 000），而加入方把 000 解释成
+            '「房主使用了自定义节点」，于是用房主的内置节点建房时，加入方会被误拦。
+            '这里给房主一个非零哨兵值，让邀请码末尾变成 001。
+            If IsServerSide Then DiscoverNodeID = 1
             Logger.Info($"使用内置节点：{String.Join(", ", RawPeers)}")
         Else
             If DiscoverNodeID <> -2 AndAlso Not IsServerSide Then
