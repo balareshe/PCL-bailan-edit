@@ -441,7 +441,11 @@ Public Class PageLinkMain
                     $"或在 属性 → 兼容性 中勾选「以管理员身份运行此程序」，以后就不必每次授权。")
             End If
             Try
-                Diagnostics.Process.Start(New Diagnostics.ProcessStartInfo(PathExe) With {.Verb = "runas"})
+                '必须带 --wait：不带的话新实例会认为"已有一个 PCL 在运行"，
+                '把旧窗口拖到前台就自己退出；旧实例同时也在退出，结果两个都没了。
+                '带 --wait 时新实例会等旧实例释放互斥锁（最多 10 秒）后继续启动。
+                Logger.Info("联机需要管理员权限，正在以管理员身份重启（--wait）")
+                Diagnostics.Process.Start(New Diagnostics.ProcessStartInfo(PathExe) With {.Verb = "runas", .Arguments = "--wait"})
             Catch ex As Exception
                 Logger.Warn(ex, "以管理员身份重启失败")
                 Throw New Exception(
