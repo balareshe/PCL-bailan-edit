@@ -425,11 +425,21 @@ Friend Module ModSecret
             If Obj("id") Is Nothing Then Return
             Dim Id As String = Obj("id").ToString()
             If Id = Settings.Get(Of String)("SystemLastNoticeId") Then Return
-            Settings.Set("SystemLastNoticeId", Id)
             Dim Content As String = Obj("content").ToString()
             Dim Title As String = Obj("title").ToString()
             Logger.Info($"收到新公告 [{Id}]：{Title}")
+            'MyMsgBox 默认不阻塞（Button2 为空且 ForceWait=False 时直接返回），
+            '而 MyMsgBoxTick 在主窗体或 PanMsg 尚未就绪时会直接返回、不显示弹窗。
+            '如果这时就把 SystemLastNoticeId 记上，这条公告会被永久吞掉，用户再也看不到。
+            '所以先确认界面能弹，弹不出来就留到下次启动再试。
+            Dim UiReady As Boolean = False
+            RunInUiWait(Sub() UiReady = (FrmMain IsNot Nothing AndAlso FrmMain.PanMsg IsNot Nothing))
+            If Not UiReady Then
+                Logger.Warn("主窗体尚未就绪，公告推迟到下次启动再显示")
+                Return
+            End If
             RunInUiWait(Sub() MyMsgBox(Content, "公告 · " & Title))
+            Settings.Set("SystemLastNoticeId", Id)
         Catch ex As Exception
             Logger.Warn(ex, "获取启动器公告失败")
         End Try
