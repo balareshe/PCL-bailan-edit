@@ -654,7 +654,7 @@ Public Class PageLinkMain
             '超时判定
             If LastProgress <> Task.Progress Then
                 TimeoutCounter = 0
-            ElseIf TimeoutCounter < 30 * 2 Then
+            ElseIf TimeoutCounter < 60 * 2 Then   '进度停滞 60 秒才判定失败（原为 30 秒）
                 TimeoutCounter += 1
             Else '进度停滞超过 30s
                 Select Case PeerCount
@@ -1099,7 +1099,17 @@ ForcedPass:
     Private ReadOnly Property PeopleCount As Integer
         Get
             If Peers Is Nothing Then Return 0
-            Return Peers.Where(Function(p) p.Type <> Peer.Types.Misc).Count() + 1 '加上自己
+            '只数房间成员（房主 + 加入者），并按主机名去重：
+            'EasyTier 会把同一个节点按不同路径（直连、走中继）各报一条，
+            '直接 Count() 会把同一个人算成两个，出现「两个人显示三个人」。
+            '中继节点本身是 Misc 类型，不计入。
+            Dim Members = Peers.
+                Where(Function(p) p.Type <> Peer.Types.Misc).
+                Select(Function(p) p.Name).
+                Where(Function(n) Not String.IsNullOrWhiteSpace(n)).
+                Distinct().
+                Count()
+            Return Members + 1 '加上自己
         End Get
     End Property
 
