@@ -495,9 +495,9 @@ Public Class PageLinkMain
            LinkNodePeers().Count = 0 AndAlso
            ServerConfig("Link")("Peers").Count() = 0 Then
             Throw New Exception(
-                $"$所有内置联机节点都已到期，且你没有填写自定义节点。{vbCrLf}{vbCrLf}" &
-                $"请先在 {vbLQ}设置 → 联机 → 自定义节点{vbRQ} 中填写中继地址，{vbCrLf}" &
-                $"格式为 udp://节点地址:端口 或 tcp://节点地址:端口。{vbCrLf}{vbCrLf}" &
+                $"$所有内置联机节点都已到期，你也没有填写自定义节点。{vbCrLf}{vbCrLf}" &
+                $"请打开 {vbLQ}设置 → 联机 → 自定义节点{vbRQ} 填写中继地址，{vbCrLf}" &
+                $"格式如 tcp://节点地址:11010 或 udp://节点地址:11010。{vbCrLf}{vbCrLf}" &
                 $"房主与所有加入者必须填写至少一个相同的节点。")
         End If
     End Sub
@@ -569,20 +569,24 @@ Public Class PageLinkMain
             If BuiltinPeers.Count = 0 Then
                 '内置节点全部过期，且用户没填自定义地址
                 Panic("没有可用的联机节点",
-                    $"$内置节点已全部到期，且你没有填写自定义节点。{vbCrLf}{vbCrLf}" &
-                    $"请先在 {vbLQ}设置 → 联机 → 自定义节点{vbRQ} 中填写一个中继地址，{vbCrLf}" &
-                    $"例如 tcp://节点地址:11010。{vbCrLf}{vbCrLf}" &
+                    $"所有内置联机节点都已到期，你也没有填写自定义节点。{vbCrLf}{vbCrLf}" &
+                    $"请打开 {vbLQ}设置 → 联机 → 自定义节点{vbRQ} 填写中继地址，{vbCrLf}" &
+                    $"格式如 tcp://节点地址:11010 或 udp://节点地址:11010。{vbCrLf}{vbCrLf}" &
                     $"房主与所有加入者必须填写至少一个相同的节点。")
                 Return
             End If
             If DiscoverNodeID = -2 AndAlso Not IsServerSide Then
-                Panic("未填写自定义节点设置", $"$房主使用了自定义节点，你必须在 {vbLQ}自定义节点{vbRQ} 设置中填写相同的内容，{vbCrLf}才能进入该房间！")
+                Panic("未填写自定义节点设置",
+                  $"房主使用了自定义节点，所以你也必须填写相同的地址。{vbCrLf}" &
+                  $"请打开 {vbLQ}设置 → 联机 → 自定义节点{vbRQ} 填写后重试。")
                 Return
             End If
             RawPeers = BuiltinPeers
             Logger.Info($"使用内置节点：{String.Join(", ", RawPeers)}")
         Else
-            If DiscoverNodeID <> -2 AndAlso Not IsServerSide Then Hint("房主可能没有使用自定义节点设置，请确认你们的自定义节点设置是否一致！")
+            If DiscoverNodeID <> -2 AndAlso Not IsServerSide Then
+                Hint("你填写了自定义节点，但邀请码显示房主没有使用。请确认双方设置一致。", HintType.Red)
+            End If
             RawPeers = CustomPeers.Split("，,".ToCharArray).Select(Function(p) p.Trim).Where(Function(p) Not String.IsNullOrEmpty(p)).ToList()
             Logger.Info($"使用自定义节点：{CustomPeers}")
         End If
@@ -652,7 +656,7 @@ Public Class PageLinkMain
                     Case -1 'CLI 无返回
                         Panic("无法启动联机模块", "近期日志：" & vbCrLf & LogHistory.Join(vbCrLf))
                     Case 0 'CLI 有返回，但未连接到任何节点
-                        Panic("无法连接到节点", $"请检查你的网络环境是否良好。")
+                        Panic("无法连接到节点", "请检查你的网络环境是否良好，稍后重试。")
                     Case Else '已连接到节点，但未连接到房主
                         Panic("无法连接到房主", $"可能的原因：{vbCrLf}- 你或者房主的网络环境不佳{vbCrLf}- 房主已关闭房间{vbCrLf}- 邀请码输错了")
                 End Select
