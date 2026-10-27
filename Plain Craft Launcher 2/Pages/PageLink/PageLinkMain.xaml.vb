@@ -72,7 +72,7 @@ Public Class PageLinkMain
         RunInNewThread(
             Sub()
                 Dim Choice As Integer = RunInUiWait(Function() MyMsgBox(
-                    $"$联机功能需要管理员权限。{vbCrLf}{vbCrLf}" &
+                    $"联机功能需要管理员权限。{vbCrLf}{vbCrLf}" &
                     $"创建虚拟网卡、写入防火墙规则都必须提权，否则联机模块会直接崩溃。{vbCrLf}{vbCrLf}" &
                     $"点「继续」后，Windows 会弹出授权窗口，请选择「是」，{vbCrLf}" &
                     $"PCL 会自动以管理员权限重启，之后请重新点击「联机」。{vbCrLf}{vbCrLf}" &
