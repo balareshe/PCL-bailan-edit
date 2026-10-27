@@ -6,6 +6,23 @@
     PanScroll="PanBack">
     <local:MyScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" x:Name="PanBack">
         <StackPanel x:Name="PanMain" Margin="25,10">
+            <local:MyCard Margin="0,15,0,0" Title="节点">
+                <StackPanel Margin="25,40,25,20">
+                    <Grid Margin="0,0,0,2">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="2*" />
+                            <ColumnDefinition Width="2.4*" />
+                            <ColumnDefinition Width="1*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="名称" Opacity="0.55" FontSize="12" />
+                        <TextBlock Grid.Column="1" Text="到期时间" Opacity="0.55" FontSize="12" />
+                        <TextBlock Grid.Column="2" Text="延迟" Opacity="0.55" FontSize="12" HorizontalAlignment="Right" />
+                    </Grid>
+                    <StackPanel x:Name="PanNodes" />
+                    <TextBlock x:Name="LabNodeNote" Margin="0,12,0,0" TextWrapping="Wrap" Opacity="0.65" FontSize="12"
+                               Text="默认使用上面未过期的节点，延迟每 10 秒刷新一次。可在「高级设置 → 自定义节点」里填写自己的节点地址，填写后将只使用你填写的地址。" />
+                </StackPanel>
+            </local:MyCard>
             <local:MyCard x:Name="CardArgument" Margin="0,15" Title="连接选项">
                 <StackPanel Margin="25,40,25,20">
                     <Grid>

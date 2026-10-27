@@ -515,19 +515,23 @@ Public Class PageLinkMain
         UpdateLoadingPage("正在获取节点列表……", "获取节点列表")
         Dim RawPeers As List(Of String)
         Dim CustomPeers As String = Settings.Get(Of String)("LinkCustomPeer")
-        Dim ConfigPeerCount As Integer = ServerConfig("Link")("Peers").Count()
+        Dim BuiltinPeers As List(Of String) = LinkNodePeers()
         If String.IsNullOrWhiteSpace(CustomPeers) Then
-            If ConfigPeerCount = 0 Then
-                '本修改版没有内置公共中继节点，必须由用户填写
-                Panic("未填写自定义节点设置",
-                    $"$本版本没有内置公共中继节点。{vbCrLf}请先在 {vbLQ}设置 → 联机 → 自定义节点{vbRQ} 中填写中继地址，{vbCrLf}例如 tcp://中继地址:11010。{vbCrLf}房主与所有加入者必须填写完全相同的内容！")
+            If BuiltinPeers.Count = 0 Then
+                '内置节点全部过期，且用户没填自定义地址
+                Panic("没有可用的联机节点",
+                    $"$内置节点已全部到期，且你没有填写自定义节点。{vbCrLf}{vbCrLf}" &
+                    $"请先在 {vbLQ}设置 → 联机 → 自定义节点{vbRQ} 中填写一个中继地址，{vbCrLf}" &
+                    $"例如 tcp://节点地址:11010。{vbCrLf}{vbCrLf}" &
+                    $"房主与所有加入者必须填写至少一个相同的节点。")
                 Return
             End If
             If DiscoverNodeID = -2 AndAlso Not IsServerSide Then
-                Panic("未填写自定义节点设置", $"$你必须在 {vbLQ}自定义节点{vbRQ} 设置中填写与房主相同的内容，{vbCrLf}才能进入该房间！")
+                Panic("未填写自定义节点设置", $"$房主使用了自定义节点，你必须在 {vbLQ}自定义节点{vbRQ} 设置中填写相同的内容，{vbCrLf}才能进入该房间！")
                 Return
             End If
-            RawPeers = GetTargetPeers()
+            RawPeers = BuiltinPeers
+            Logger.Info($"使用内置节点：{String.Join(", ", RawPeers)}")
         Else
             If DiscoverNodeID <> -2 AndAlso Not IsServerSide Then Hint("房主可能没有使用自定义节点设置，请确认你们的自定义节点设置是否一致！")
             RawPeers = CustomPeers.Split("，,".ToCharArray).Select(Function(p) p.Trim).Where(Function(p) Not String.IsNullOrEmpty(p)).ToList()

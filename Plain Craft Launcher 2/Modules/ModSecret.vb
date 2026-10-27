@@ -401,6 +401,56 @@ Friend Module ModSecret
     ''' <summary>
     ''' 拉取启动器公告，只在与上次已读的不同时弹窗提示。
     ''' </summary>
+    ''' <summary>
+    ''' 内置联机节点。到期时间由维护者手工填写，格式 yyyy-MM-dd HH:mm。
+    ''' 若 OTA 上提供了 link.json，会用它覆盖这里的默认值，这样改节点不用重新编译。
+    ''' </summary>
+    Friend Function LinkNodesDefault() As JArray
+        Return New JArray(
+            New JObject(
+                New JProperty("name", "香港精品节点"),
+                New JProperty("address", "tcp://154.219.106.100:11010"),
+                New JProperty("expiresAt", "2027-01-02 18:38")))
+    End Function
+
+    ''' <summary>
+    ''' 当前可用的内置节点（已过期的会被排除）。
+    ''' </summary>
+    Friend Function LinkNodes() As List(Of JObject)
+        Dim Result As New List(Of JObject)
+        Dim Nodes As JToken = ServerConfig?("Link")?("Nodes")
+        If Nodes Is Nothing Then Return Result
+        For Each Node As JToken In Nodes
+            If Node Is Nothing OrElse Node.Type <> JTokenType.[Object] Then Continue For
+            Result.Add(DirectCast(Node, JObject))
+        Next
+        Return Result
+    End Function
+
+    ''' <summary>
+    ''' 节点是否已过期。expiresAt 为空视为永不过期。
+    ''' </summary>
+    Friend Function IsLinkNodeExpired(Node As JObject) As Boolean
+        Dim Raw As String = If(Node?("expiresAt")?.ToString(), "").Trim
+        If Raw.Length = 0 Then Return False
+        Dim Parsed As Date
+        If Not Date.TryParse(Raw, Parsed) Then Return False
+        Return Date.Now > Parsed
+    End Function
+
+    ''' <summary>
+    ''' 未过期的内置节点地址列表。
+    ''' </summary>
+    Friend Function LinkNodePeers() As List(Of String)
+        Dim Result As New List(Of String)
+        For Each Node In LinkNodes()
+            If IsLinkNodeExpired(Node) Then Continue For
+            Dim Addr As String = If(Node?("address")?.ToString(), "").Trim
+            If Addr.Length > 0 Then Result.Add(Addr)
+        Next
+        Return Result
+    End Function
+
     Friend Sub RefreshServerConfig()
         '联机（EasyTier）配置。
         '节点列表 API（uptime.easytier.cn）已下线，本修改版不内置任何公共中继地址，
@@ -418,7 +468,8 @@ Friend Module ModSecret
                 New JProperty("PeersBlackList", New JArray()),
                 New JProperty("RandomPeer", 0),
                 New JProperty("DiscoverPeerId", 0),
-                New JProperty("DiscoverPeer", ""))))
+                New JProperty("DiscoverPeer", ""),
+                New JProperty("Nodes", LinkNodesDefault()))))
         Try
             Dim Raw As String = NetRequestByClient(OtaBase & "notice.json", RequireJson:=False)
             Dim Obj As JObject = JObject.Parse(Raw)
