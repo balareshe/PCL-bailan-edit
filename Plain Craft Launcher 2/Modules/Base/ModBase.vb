@@ -6,11 +6,12 @@ Public Module ModBase
 #Region "声明"
 
     '下列版本信息由更新器自动修改
-    Public Const VersionBaseName As String = "2.13.0.1" '显示用版本名
+    Public Const VersionBaseName As String = "2.13.0.1.422" '显示用版本名：上游基线 + 本修改版构建号
     Public Const CommitHash As String = "" 'Commit Hash，由 GitHub Workflow 自动替换
     'VersionCode 跟随本修改版自己的发布节奏递增：
     '  每次发布 +1；新增功能或较大改动可 +2 ~ +5。
-    '  VersionBaseName 保持上游的 2.13.0.1 不变。
+    '  VersionBaseName 是显示用版本名，形如 2.13.0.1.<versionCode>：
+    '  前缀保留上游基线，后缀是本修改版自己的构建号，两者需同步修改。
 #If RELEASE Then
     Public Const VersionCode As Integer = 422 '正式版
 #Else
