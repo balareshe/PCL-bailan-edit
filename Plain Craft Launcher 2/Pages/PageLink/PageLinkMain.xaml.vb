@@ -984,9 +984,45 @@ ForcedPass:
     ''' 若在加载完成后连续获取失败 3 次，则会强制断开连接。
     ''' </summary>
     Private RefreshPeerLoader As New LoaderTask(Of Integer, List(Of Peer))("EasyTier CLI", AddressOf RefreshPeer)
+    ''' <summary>
+    ''' 运行命令行程序并读取标准输出。超时则杀掉进程并返回空字符串。
+    ''' 开源版把上游的 StartProcessAndGetOutput 一并删掉了，这里补一个最小实现。
+    ''' </summary>
+    Private Shared Function RunCliAndGetOutput(FileName As String, Arguments As String, TimeoutMs As Integer) As String
+        Try
+            If Not IO.File.Exists(FileName) Then
+                Logger.Warn($"CLI 不存在：{FileName}")
+                Return ""
+            End If
+            Dim Psi As New Diagnostics.ProcessStartInfo(FileName, Arguments) With {
+                .UseShellExecute = False,
+                .RedirectStandardOutput = True,
+                .RedirectStandardError = True,
+                .CreateNoWindow = True,
+                .StandardOutputEncoding = System.Text.Encoding.UTF8,
+                .StandardErrorEncoding = System.Text.Encoding.UTF8}
+            Using P As Diagnostics.Process = Diagnostics.Process.Start(Psi)
+                Dim Reader As Threading.Tasks.Task(Of String) = P.StandardOutput.ReadToEndAsync()
+                If P.WaitForExit(TimeoutMs) Then Return Reader.GetAwaiter().GetResult()
+                Logger.Warn($"CLI 调用超时（{TimeoutMs}ms）：{Arguments}")
+                Try
+                    P.Kill()
+                Catch
+                End Try
+            End Using
+            Return ""
+        Catch ex As Exception
+            Logger.Warn(ex, "调用 EasyTier CLI 失败")
+            Return ""
+        End Try
+    End Function
+
     Private Sub RefreshPeer()
         Try
-            Dim CliResult = "" 'StartProcessAndGetOutput(PathEasyTier & "联机模块 CLI.exe", $"-o json -p 127.0.0.1:{RPCPort} peer", 2000, Encoding:=Encoding.UTF8, PrintLog:=False)
+            '开源版把这一行注释掉了，CliResult 恒为空，导致 Peers 永远是 Nothing，
+            '联机必然在 30 秒后报「无法启动联机模块」。这里恢复真实调用。
+            Dim CliResult As String = RunCliAndGetOutput(
+                PathEasyTier & "联机模块 CLI.exe", $"-o json -p 127.0.0.1:{RPCPort} peer", 4000)
             '解析
             If Not CliResult.Contains("lat_ms") Then Throw New Exception("CLI 调用失败：" & vbCrLf & CliResult)
             If GetUuid() Mod If(ModeDebug, 23, 103) = 0 Then Logger.Info($"CLI 输出抽样：{vbCrLf}{CliResult}")
