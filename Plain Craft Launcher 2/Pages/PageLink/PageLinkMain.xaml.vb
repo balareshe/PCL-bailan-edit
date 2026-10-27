@@ -61,6 +61,42 @@ Public Class PageLinkMain
     End Sub
 
     '页面动画兼容
+    ''' <summary>
+    ''' 进入联机页面时的前置说明：点「继续」才申请管理员权限，点「算了」什么也不做。
+    ''' </summary>
+    Private Shared AdminNoticeShown As Boolean = False
+    Private Sub CheckAdminOnEnter() Handles Me.PageEnter
+        If WindowsUtils.HasAdminRole() Then Return
+        If AdminNoticeShown Then Return
+        AdminNoticeShown = True
+        RunInNewThread(
+            Sub()
+                Dim Choice As Integer = RunInUiWait(Function() MyMsgBox(
+                    $"$联机功能需要管理员权限。{vbCrLf}{vbCrLf}" &
+                    $"创建虚拟网卡、写入防火墙规则都必须提权，否则联机模块会直接崩溃。{vbCrLf}{vbCrLf}" &
+                    $"点「继续」后，Windows 会弹出授权窗口，请选择「是」，{vbCrLf}" &
+                    $"PCL 会自动以管理员权限重启，之后请重新点击「联机」。{vbCrLf}{vbCrLf}" &
+                    $"如果不想授权，点「算了」即可，其它功能不受影响。",
+                    "联机需要管理员权限", "继续", "算了", IsWarn:=True))
+                If Choice <> 1 Then
+                    Logger.Info("用户选择了「算了」，不申请管理员权限")
+                    Return
+                End If
+                Try
+                    '必须带 --wait：否则新实例会认为"已有 PCL 在运行"并立刻退出，
+                    '而旧实例同时也在退出，结果两个都没了。
+                    Logger.Info("用户选择「继续」，正在以管理员身份重启（--wait）")
+                    Diagnostics.Process.Start(New Diagnostics.ProcessStartInfo(PathExe) With {.Verb = "runas", .Arguments = "--wait"})
+                Catch ex As Exception
+                    Logger.Warn(ex, "以管理员身份重启失败")
+                    RunInUiWait(Sub() Hint("未获得管理员授权，联机功能不可用"))
+                    Return
+                End Try
+                '新实例会在单实例互斥上最多等 10 秒，这里退出让出锁
+                RunInUiWait(Sub() FormMain.EndProgramForce(ProcessReturnValues.TaskDone))
+            End Sub, "联机权限检查")
+    End Sub
+
     Private Sub UpdatePanelVisibility() Handles Me.PageEnter
         FrmLinkMain.PanSelect.Visibility = If(LinkState = LinkStates.Waiting, Visibility.Visible, Visibility.Collapsed)
         FrmLinkMain.PanFinish.Visibility = If(LinkState = LinkStates.Finished, Visibility.Visible, Visibility.Collapsed)
@@ -425,36 +461,15 @@ Public Class PageLinkMain
 
     '1. 获取服务器配置
     Private Sub InitConfig(Task As LoaderTask(Of Integer, Integer))
-        '联机必须提权：创建 TUN 虚拟网卡、写防火墙规则都需要管理员权限，
-        '否则 EasyTier 会直接报 "tun device error" / 0x80070005 然后崩溃。
-        '这里在做任何事之前先检查，并提供「以管理员身份重启」。
+        '管理员权限已在进入联机页面时检查过（见 CheckAdminOnEnter）；
+        '这里只做兜底：如果用户当时点了「算了」，真正创建/加入时直接拒绝，
+        '而不是让 EasyTier 跑起来之后崩在 tun device 上。
         If Not WindowsUtils.HasAdminRole() Then
-            Dim Choice As Integer = RunInUiWait(Function() MyMsgBox(
-                $"$联机功能需要管理员权限。{vbCrLf}{vbCrLf}" &
-                $"创建虚拟网卡和写入防火墙规则都必须提权，否则联机模块会直接崩溃。{vbCrLf}{vbCrLf}" &
-                $"是否以管理员身份重新启动 PCL？重启后请重新点击「联机」。",
-                "需要管理员权限", "以管理员重启", "取消", IsWarn:=True))
-            If Choice <> 1 Then
-                Throw New Exception(
-                    $"$未授予管理员权限，无法启动联机模块。{vbCrLf}{vbCrLf}" &
-                    $"右键 PCL 选择「以管理员身份运行」，{vbCrLf}" &
-                    $"或在 属性 → 兼容性 中勾选「以管理员身份运行此程序」，以后就不必每次授权。")
-            End If
-            Try
-                '必须带 --wait：不带的话新实例会认为"已有一个 PCL 在运行"，
-                '把旧窗口拖到前台就自己退出；旧实例同时也在退出，结果两个都没了。
-                '带 --wait 时新实例会等旧实例释放互斥锁（最多 10 秒）后继续启动。
-                Logger.Info("联机需要管理员权限，正在以管理员身份重启（--wait）")
-                Diagnostics.Process.Start(New Diagnostics.ProcessStartInfo(PathExe) With {.Verb = "runas", .Arguments = "--wait"})
-            Catch ex As Exception
-                Logger.Warn(ex, "以管理员身份重启失败")
-                Throw New Exception(
-                    $"$未能以管理员身份重启（可能取消了 UAC 授权）。{vbCrLf}" &
-                    $"请手动右键 PCL → 以管理员身份运行。")
-            End Try
-            '新实例会在单实例互斥上最多等 10 秒，这里退出让出锁
-            RunInUiWait(Sub() FormMain.EndProgramForce(ProcessReturnValues.TaskDone))
-            Throw New OperationCanceledException
+            Throw New Exception(
+                $"$未授予管理员权限，无法启动联机模块。{vbCrLf}{vbCrLf}" &
+                $"重新进入「联机」页面并点「继续」，按提示授权即可。{vbCrLf}" &
+                $"也可以右键 PCL → 以管理员身份运行，{vbCrLf}" &
+                $"或在 属性 → 兼容性 中勾选「以管理员身份运行此程序」，以后就不必每次授权。")
         End If
 
         UpdateLoadingPage("正在联网获取配置……", "联网获取配置")
