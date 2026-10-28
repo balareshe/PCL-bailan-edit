@@ -1009,6 +1009,16 @@ ForcedPass:
     ''' 自己的 NAT 类型。
     ''' </summary>
     Private NATType As NATTypes = NATTypes.Pending
+    ''' <summary>
+    ''' 断线容忍：跨省/跨境链路抖动时，EasyTier 的节点列表可能短暂为空，
+    ''' 几秒内会自行恢复。原来只要有一秒为空就判定断开，导致「一波动就退出」。
+    ''' 这里改为连续这么多秒都为空才真正断开。
+    ''' </summary>
+    Private Const DisconnectGraceSeconds As Integer = 10
+    ''' <summary>节点列表连续为空的秒数。</summary>
+    Private PeerEmptySeconds As Integer = 0
+    ''' <summary>房主节点连续缺失的秒数。</summary>
+    Private HostMissingSeconds As Integer = 0
 
     ''' <summary>
     ''' 调用 EasyTier CLI 获取已连接节点信息。
@@ -1078,7 +1088,12 @@ ForcedPass:
             Logger.Warn(ex, "获取节点信息失败")
             If LinkState = LinkStates.Finished Then
                 FailCount += 1
-                If FailCount >= 4 Then Panic("获取节点信息失败", ex.Message)
+                '原来连续 4 次（约 4 秒）就断开。链路抖动时 CLI 偶发超时很常见，
+                '放宽到连续 15 次再判定，避免一次网络波动就把人踢出房间。
+                If FailCount >= 15 Then
+                    Logger.Warn($"获取节点信息连续失败 {FailCount} 次，判定联机模块异常")
+                    Panic("获取节点信息失败", ex.Message)
+                End If
             End If
         End Try
     End Sub
@@ -1231,15 +1246,34 @@ ForcedPass:
         End If
         '检查核心状态
         CheckCrash()
-        '检查节点状态
-        If Not Peers.Any Then
+        '检查节点状态。这里带容忍：网络波动会让节点列表短暂为空，
+        '必须连续多秒为空才判定真的断开，否则任何抖动都会把用户踢出房间。
+        If Peers Is Nothing OrElse Not Peers.Any Then
+            PeerEmptySeconds += 1
+            If PeerEmptySeconds < DisconnectGraceSeconds Then
+                Logger.Warn($"节点列表为空，等待恢复（{PeerEmptySeconds}/{DisconnectGraceSeconds} 秒）")
+                Return '本轮跳过后续广播等逻辑
+            End If
+            Logger.Warn($"节点列表连续 {PeerEmptySeconds} 秒为空，判定连接已断开")
             Panic("网络连接已断开", "请检查你的网络环境是否正常。")
             Return
+        ElseIf PeerEmptySeconds > 0 Then
+            Logger.Info($"节点列表已恢复（此前为空 {PeerEmptySeconds} 秒）")
+            PeerEmptySeconds = 0
         End If
         If Not IsServerSide AndAlso Not Peers.Any(Function(p) p.Type = Peer.Types.Server) Then
+            HostMissingSeconds += 1
+            If HostMissingSeconds < DisconnectGraceSeconds Then
+                Logger.Warn($"房主节点暂时不可见，等待恢复（{HostMissingSeconds}/{DisconnectGraceSeconds} 秒）")
+                Return
+            End If
+            Logger.Warn($"房主节点连续 {HostMissingSeconds} 秒不可见，判定房主已离开")
             MyMsgBox("房主已离开房间！", "联机结束")
             ChangeState(LinkStates.Waiting)
             Return
+        ElseIf HostMissingSeconds > 0 Then
+            Logger.Info($"房主节点已恢复（此前缺失 {HostMissingSeconds} 秒）")
+            HostMissingSeconds = 0
         End If
         '广播联机房间端口
         If Not IsServerSide Then
