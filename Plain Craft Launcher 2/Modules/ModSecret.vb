@@ -397,10 +397,11 @@ Friend Module ModSecret
             End Try
             Thread.Sleep(400)
 
-            '2. 替换文件。旧进程刚退出时文件锁可能还没释放，这里做几次重试。
-            '注意顺序：先把新文件拷贝到同目录的临时名，再覆盖旧文件。
-            '原实现是「先删旧文件、再拷贝」，一旦拷贝失败（杀软占用等），
-            '启动器本体就没了——这是不可接受的。
+            '2. 替换文件：先把原文件「改名」挪开，再把新文件「改名」放进去。
+            '为什么不用 File.Copy(..., overwrite:=True)：Windows 上覆盖是先 truncate
+            '目标再写入，中途失败（磁盘满、杀软中断、断电）会把启动器本体截断成半个；
+            '而且重试时备份到的会是已经损坏的残骸。
+            '改名是原子操作、不复制内容，失败可以立刻把原文件挪回来。
             Dim StagedFile As String = OldFileName & ".new"
             Dim BackupFile As String = OldFileName & ".bak"
             Try
@@ -416,12 +417,24 @@ Friend Module ModSecret
             Dim Replaced As Boolean = False
             For i = 1 To 20
                 Try
-                    If FileUtils.Exists(OldFileName) Then File.Copy(OldFileName, BackupFile, True)
-                    File.Copy(StagedFile, OldFileName, True)
+                    '① 原文件改名备份（不复制内容，瞬间完成）
+                    If FileUtils.Exists(BackupFile) Then FileUtils.Delete(BackupFile)
+                    If FileUtils.Exists(OldFileName) Then File.Move(OldFileName, BackupFile)
+                    '② 新文件改名就位
+                    File.Move(StagedFile, OldFileName)
                     Replaced = True
                     Exit For
                 Catch ex As Exception
                     Logger.Warn($"替换启动器文件第 {i} 次失败，稍后重试：{ex.Message}")
+                    '③ 回滚：目标位置空了但备份还在，就把它挪回去
+                    Try
+                        If Not FileUtils.Exists(OldFileName) AndAlso FileUtils.Exists(BackupFile) Then
+                            File.Move(BackupFile, OldFileName)
+                            Logger.Info("已回滚：把备份移回原文件名")
+                        End If
+                    Catch ex2 As Exception
+                        Logger.Error(ex2, "回滚失败，原文件仍在 " & BackupFile)
+                    End Try
                     Thread.Sleep(300)
                 End Try
             Next
@@ -431,6 +444,14 @@ Friend Module ModSecret
             End Try
 
             If Not Replaced Then
+                '最后再尝试一次恢复
+                Try
+                    If Not FileUtils.Exists(OldFileName) AndAlso FileUtils.Exists(BackupFile) Then
+                        File.Move(BackupFile, OldFileName)
+                        Logger.Info("替换失败后已恢复原文件")
+                    End If
+                Catch
+                End Try
                 Logger.Error($"替换启动器文件失败：{NewFileName} → {OldFileName}")
                 Dim Extra As String = If(FileUtils.Exists(BackupFile), vbCrLf & vbCrLf & "原文件已备份到：" & vbCrLf & BackupFile, "")
                 MsgBox("自动更新失败，请手动复制以下文件并覆盖原文件：" & vbCrLf &
