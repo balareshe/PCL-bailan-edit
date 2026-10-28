@@ -209,17 +209,12 @@ Friend Module ModSecret
         VerifyVersionSignature(Obj)
         Try
             Dim Code As Integer = Obj("versionCode").ToObject(Of Integer)()
-            Dim NoticeId As String = ""
-            Try
-                Dim NoticeRaw As String = NetRequestByClient(OtaBase & "notice.json", RequireJson:=False)
-                If NoticeRaw.Contains("""title""") Then
-                    NoticeId = JObject.Parse(NoticeRaw)("id").ToString()
-                End If
-            Catch ex As Exception
-                Logger.Warn(ex, "获取公告失败")
-            End Try
             'Notice.cfg 格式：快照版版本号|正式版版本号|公告ID
-            FileUtils.Write(PathTemp & "Cache\Notice.cfg", $"{Code}|{Code}|{NoticeId}", Encoding.UTF8)
+            '唯一读取方是 PageSetupSystem.IsLauncherNewest()，它只用第 2、3 个字段
+            '（正式版 / 快照版版本号），公告 ID 从来没有被读过。
+            '原来为了填这个字段，每次检查更新都要多拉一次 notice.json；
+            '启动时叠加自动检查与手动检查，能拉到 4 次请求，纯属浪费。
+            FileUtils.Write(PathTemp & "Cache\Notice.cfg", $"{Code}|{Code}|", Encoding.UTF8)
         Catch ex As Exception
             Logger.Warn(ex, "写入 Notice.cfg 失败")
         End Try
@@ -253,10 +248,12 @@ Friend Module ModSecret
                     Dim ForceUpdate As Boolean = Obj("force") IsNot Nothing AndAlso Obj("force").ToObject(Of Boolean)()
 
                     If Code <= VersionCode Then
+                        Logger.Info($"检查更新：已是最新（{VersionBaseName} / {VersionCode}）")
                         If Not Silent Then RunInUiWait(Sub() Hint($"当前已是最新版本（{VersionBaseName}）"))
                         Return
                     End If
 
+                    Logger.Info($"检查更新：发现 {Name}（{Code}），当前 {VersionBaseName}（{VersionCode}）")
                     Dim Msg As String = $"发现新版本 {Name}（{Code}）{vbCrLf}当前版本 {VersionBaseName}（{VersionCode}）"
                     If Changelog <> "" Then Msg &= vbCrLf & vbCrLf & Changelog
                     If ForceUpdate Then Msg &= vbCrLf & vbCrLf & "此版本为强制更新，必须更新后才能继续使用。"
@@ -337,18 +334,10 @@ Friend Module ModSecret
         RunInNewThread(
             Sub()
                 Threading.Thread.Sleep(6000) '等启动动画与各加载器稳定
-                Try
-                    Dim Obj As JObject = GetOtaVersion()
-                    Dim Code As Integer = Obj("versionCode").ToObject(Of Integer)()
-                    If Code <= VersionCode Then
-                        Logger.Info($"自动检查更新：已是最新（{VersionBaseName} / {VersionCode}）")
-                        Return
-                    End If
-                    Logger.Info($"自动检查更新：发现 {Obj("versionName")}（{Code}）")
-                    UpdateCheckByButton(False)
-                Catch ex As Exception
-                    Logger.Warn(ex, "自动检查更新失败")
-                End Try
+                '统一走 UpdateCheckByButton：Silent 模式下无更新不打扰，
+                '有更新照常弹窗。之前这里先自己 GetOtaVersion 判断一遍，
+                '再调 UpdateCheckByButton 又拉一遍，导致 version.json 被请求两次。
+                UpdateCheckByButton(Silent:=True)
             End Sub, "自动检查更新")
     End Sub
 
