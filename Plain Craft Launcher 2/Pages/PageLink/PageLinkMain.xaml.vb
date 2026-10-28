@@ -669,7 +669,30 @@ Public Class PageLinkMain
         Loop Until Task.IsCanceled
         If Task.IsCanceled Then Throw New OperationCanceledException
         '等待连接稳定，最多 5s
-        If IsServerSide Then Return
+        If IsServerSide Then
+            '房主自检：确认本机这个端口真的有程序在监听（即 Minecraft 的「对局域网开放」）。
+            '没有监听的话，加入方连过来必然失败，只会看到 Minecraft 的
+            '「Connection reset」。提前提示比让对方自己猜要好。
+            Dim Listening As Boolean = False
+            Try
+                Using Client As New TcpClient()
+                    Dim ConnTask As Threading.Tasks.Task = Client.ConnectAsync("127.0.0.1", ServerPort)
+                    Listening = ConnTask.Wait(800)
+                End Using
+            Catch
+                Listening = False
+            End Try
+            If Listening Then
+                Logger.Info($"房主自检通过：127.0.0.1:{ServerPort} 正在监听")
+            Else
+                Logger.Warn($"房主自检失败：127.0.0.1:{ServerPort} 没有程序在监听")
+                RunInUiWait(Sub() Hint(
+                    $"本机 {ServerPort} 端口没有程序在监听。" & vbCrLf &
+                    $"请先在游戏里点「对局域网开放」，并确认端口与这里填写的一致，" & vbCrLf &
+                    $"否则加入者会连接失败。", HintType.Red))
+            End If
+            Return
+        End If
         UpdateLoadingPage("连接优化中……", "优化连接")
         Task.Progress = 0.999
         For i = 1 To 50
