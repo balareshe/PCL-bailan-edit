@@ -305,6 +305,13 @@ Friend Module ModSecret
                         Logger.Warn("OTA 未提供 sha256，已跳过校验")
                     End If
 
+                    '把这次更新的日志存下来，重启后由「已更新至」弹窗读取。
+                    '开源版的 FeatureList 是编译期硬编码且为空，不存下来就永远显示「没有更新日志……」。
+                    Try
+                        FileUtils.Write(PathTemp & "UpdateChangelog.txt", Changelog, Encoding.UTF8)
+                    Catch ex As Exception
+                        Logger.Warn(ex, "写入更新日志缓存失败")
+                    End Try
                     Logger.Info($"更新包已就绪：{Latest}")
                     IsUpdateWaitingRestart = True
                     UpdateRestart(True)

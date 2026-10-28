@@ -219,9 +219,28 @@ Public Class FormMain
             End If
         End If
         '整理更新日志文本
+        '若刚从 OTA 更新过来，优先显示 OTA 下发的日志（开源版的 FeatureList 为空）
+        Dim OtaChangelog As String = ""
+        Try
+            Dim OtaChangelogPath As String = PathTemp & "UpdateChangelog.txt"
+            If IO.File.Exists(OtaChangelogPath) Then
+                OtaChangelog = IO.File.ReadAllText(OtaChangelogPath).Trim
+                IO.File.Delete(OtaChangelogPath)
+            End If
+        Catch ex As Exception
+            Logger.Warn(ex, "读取更新日志缓存失败")
+        End Try
         Dim ContentList As New List(Of String)
         Dim SortedFeatures = FeatureList.OrderByDescending(Function(f) f.Key).ToList
         If Not SortedFeatures.Any() AndAlso FeatureCount = 0 AndAlso BugCount = 0 Then ContentList.Add("没有更新日志……")
+        If OtaChangelog.Length > 0 Then
+            '有 OTA 日志时以它为准
+            ContentList.Clear()
+            For Each Line As String In OtaChangelog.Split(New String() {vbCrLf, vbLf}, StringSplitOptions.RemoveEmptyEntries)
+                Dim Trimmed As String = Line.Trim
+                If Trimmed.Length > 0 Then ContentList.Add(Trimmed)
+            Next
+        End If
         For i = 0 To Math.Min(9, SortedFeatures.Count - 1) '最多取 10 项
             ContentList.Add(SortedFeatures(i).Value)
         Next

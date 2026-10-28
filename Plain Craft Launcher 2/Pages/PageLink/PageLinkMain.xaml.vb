@@ -74,7 +74,7 @@ Public Class PageLinkMain
                 Dim Choice As Integer = RunInUiWait(Function() MyMsgBox(
                     $"联机功能需要管理员权限。{vbCrLf}{vbCrLf}" &
                     $"创建虚拟网卡、写入防火墙规则都必须提权，否则联机模块会直接崩溃。{vbCrLf}{vbCrLf}" &
-                    $"点「继续」后，Windows 会弹出授权窗口，请选择「是」，{vbCrLf}" &
+                    $"点「继续」后，Windows 会弹出授权窗口，请选择「是」。" & vbCrLf &
                     $"PCL 会自动以管理员权限重启，之后请重新点击「联机」。{vbCrLf}{vbCrLf}" &
                     $"如果不想授权，点「算了」即可，其它功能不受影响。",
                     "联机需要管理员权限", "继续", "算了", IsWarn:=True))
@@ -468,7 +468,7 @@ Public Class PageLinkMain
             Throw New Exception(
                 $"$未授予管理员权限，无法启动联机模块。{vbCrLf}{vbCrLf}" &
                 $"重新进入「联机」页面并点「继续」，按提示授权即可。{vbCrLf}" &
-                $"也可以右键 PCL → 以管理员身份运行，{vbCrLf}" &
+                $"也可以右键 PCL → 以管理员身份运行。" & vbCrLf &
                 $"或在 属性 → 兼容性 中勾选「以管理员身份运行此程序」，以后就不必每次授权。")
         End If
 
@@ -496,7 +496,7 @@ Public Class PageLinkMain
            ServerConfig("Link")("Peers").Count() = 0 Then
             Throw New Exception(
                 $"$所有内置联机节点都已到期，你也没有填写自定义节点。{vbCrLf}{vbCrLf}" &
-                $"请打开 {vbLQ}设置 → 联机 → 自定义节点{vbRQ} 填写中继地址，{vbCrLf}" &
+                $"请打开 {vbLQ}设置 → 联机 → 自定义节点{vbRQ} 填写中继地址。{vbCrLf}" &
                 $"格式如 tcp://节点地址:11010 或 udp://节点地址:11010。{vbCrLf}{vbCrLf}" &
                 $"房主与所有加入者必须填写至少一个相同的节点。")
         End If
@@ -570,7 +570,7 @@ Public Class PageLinkMain
                 '内置节点全部过期，且用户没填自定义地址
                 Panic("没有可用的联机节点",
                     $"所有内置联机节点都已到期，你也没有填写自定义节点。{vbCrLf}{vbCrLf}" &
-                    $"请打开 {vbLQ}设置 → 联机 → 自定义节点{vbRQ} 填写中继地址，{vbCrLf}" &
+                    $"请打开 {vbLQ}设置 → 联机 → 自定义节点{vbRQ} 填写中继地址。{vbCrLf}" &
                     $"格式如 tcp://节点地址:11010 或 udp://节点地址:11010。{vbCrLf}{vbCrLf}" &
                     $"房主与所有加入者必须填写至少一个相同的节点。")
                 Return

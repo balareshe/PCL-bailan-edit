@@ -1021,8 +1021,8 @@ Retry:
                 Logger.Warn(ex, "微软登录第 4 步汇报 403：Invalid app registration（应用未获 Minecraft API 授权）")
                 Throw New Exception(
                     "$微软登录第 4 步失败：启动器的应用未获得 Minecraft API 授权。" & vbCrLf &
-                    "这不是网络或 VPN 问题——Mojang 返回的是 Invalid app registration，" & vbCrLf &
-                    "表示该应用（Client ID）尚未加入 api.minecraftservices.com 的白名单。" & vbCrLf & vbCrLf &
+                    "这不是网络或 VPN 问题——Mojang 返回的是 Invalid app registration。" & vbCrLf &
+                    "这表示该应用（Client ID）尚未加入 api.minecraftservices.com 的白名单。" & vbCrLf & vbCrLf &
                     "如果你只是使用者，请联系本修改版的维护者。" & vbCrLf &
                     "如果你是维护者，请提交申请：https://aka.ms/AppRegInfo")
             ElseIf ex.StatusCode = HttpStatusCode.Forbidden Then
