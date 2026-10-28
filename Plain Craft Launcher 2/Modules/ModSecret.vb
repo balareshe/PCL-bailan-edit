@@ -333,6 +333,18 @@ Friend Module ModSecret
     Friend Sub UpdateCheckAuto()
         RunInNewThread(
             Sub()
+                '兜底：清理上次更新可能残留的更新程序副本。
+                '延迟删除偶尔会失败（进程还没退出、文件被占用），这里收尾。
+                Try
+                    Dim Leftover As String = IO.Path.Combine(IO.Path.GetDirectoryName(PathExe), "PCL2_updater.exe")
+                    Dim SelfPath As String = Diagnostics.Process.GetCurrentProcess().MainModule.FileName
+                    If FileUtils.Exists(Leftover) AndAlso Not String.Equals(Leftover, SelfPath, StringComparison.OrdinalIgnoreCase) Then
+                        FileUtils.Delete(Leftover)
+                        Logger.Info($"已清理残留的更新程序：{Leftover}")
+                    End If
+                Catch ex As Exception
+                    Logger.Warn(ex, "清理残留更新程序失败")
+                End Try
                 Threading.Thread.Sleep(6000) '等启动动画与各加载器稳定
                 '统一走 UpdateCheckByButton：Silent 模式下无更新不打扰，
                 '有更新照常弹窗。之前这里先自己 GetOtaVersion 判断一遍，
@@ -448,10 +460,23 @@ Friend Module ModSecret
                 Return
             End If
             Logger.Info($"已替换启动器文件：{OldFileName}")
-            '成功后清理更新程序副本与备份
+            '成功后清理更新程序副本与备份。
+            '注意：更新程序自己就是 NewFileName（副本放在启动器同目录再运行），
+            '它此刻正在运行，Windows 不允许删除自己的映像，直接删一定失败，
+            '会在用户桌面上留下一个 PCL2_updater.exe。改为延迟删除。
             Try
-                If NewFileName <> OldFileName Then FileUtils.Delete(NewFileName)
-            Catch
+                Dim SelfPath As String = Diagnostics.Process.GetCurrentProcess().MainModule.FileName
+                If NewFileName <> OldFileName Then
+                    If String.Equals(IO.Path.GetFullPath(NewFileName), IO.Path.GetFullPath(SelfPath), StringComparison.OrdinalIgnoreCase) Then
+                        '等本进程退出后再删
+                        StartProcess("cmd.exe", $"/c ping -n 4 127.0.0.1 >nul & del /f /q ""{SelfPath}""")
+                        Logger.Info($"已安排延迟删除更新程序副本：{SelfPath}")
+                    Else
+                        FileUtils.Delete(NewFileName)
+                    End If
+                End If
+            Catch ex As Exception
+                Logger.Warn(ex, "清理更新程序副本失败")
             End Try
             Try
                 FileUtils.Delete(BackupFile)
