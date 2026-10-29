@@ -5,7 +5,12 @@ Imports System.Reflection
 Imports PCL
 
 Public Class PageLinkMain
-    Private Const INVITE_CODE_VERSION As Integer = 2
+    '邀请码格式版本。3 = 房间名带 PCLB- 前缀（配合中继白名单 PCLB-*）
+    Private Const INVITE_CODE_VERSION As Integer = 3
+    'PCLB-P{4位端口hex}-{5位随机}  =>  16 字符
+    Private Const CODE_NAME_LEN As Integer = 16
+    'PCLB-Pxxxx-yyyyy-sssss-vvddd  =>  28 字符
+    Private Const CODE_TOTAL_LEN As Integer = 28
 
     '===============================
     '  状态机与前端页面
@@ -145,7 +150,10 @@ Public Class PageLinkMain
             Next
             Return Result.Replace("O", "0").Replace("I", "1")
         End Function
-        NetworkName = $"P{ServerPort.ConvertRadix(16).PadLeft(4, "0"c)}-{GenerateRandomCode()}"
+        '前缀 PCLB- 是给中继白名单认的：中继只给 PCLB-* 开头的网络转发，
+        '别人随便起的名字用不了我们的中继。前缀用大写 P 开头，
+        '这样过渡期旧的 P* 白名单也还能匹配。
+        NetworkName = $"PCLB-P{ServerPort.ConvertRadix(16).PadLeft(4, "0"c)}-{GenerateRandomCode()}"
         NetworkSecret = GenerateRandomCode()
         DiscoverNodeID = -1
         Logger.Info($"尝试创建房间，网络名 {NetworkName}，网络密码 {NetworkSecret}，端口 {ServerPort}")
@@ -177,13 +185,18 @@ Public Class PageLinkMain
         Logger.Info($"实际使用的邀请码：{Code}")
         '基础信息
         IsServerSide = False
-        ServerPort = Code.Substring(1, 4).Upper.ConvertRadix(16, 10)
-        NetworkName = Code.Substring(0, 11)
-        NetworkSecret = Code.Substring(12, 5)
-        If Code.Substring(20, 3) = "000" Then
+        '新格式：PCLB-P{4hex}-{5}-{5}-{2ver}{3disc}
+        '        [0..16)                     名称
+        '                [17..22)            密码
+        '                        [23..25)    版本
+        '                                [25..28) 发现节点
+        ServerPort = Code.Substring(6, 4).ConvertRadix(16, 10)
+        NetworkName = Code.Substring(0, CODE_NAME_LEN)
+        NetworkSecret = Code.Substring(17, 5)
+        If Code.Substring(25, 3) = "000" Then
             DiscoverNodeID = -2
         Else
-            DiscoverNodeID = Code.Substring(20, 3).Upper.ConvertRadix(16, 10)
+            DiscoverNodeID = Code.Substring(25, 3).ConvertRadix(16, 10)
         End If
         Logger.Info($"尝试加入房间，网络名 {NetworkName}，网络密码 {NetworkSecret}，端口 {ServerPort}，发现节点 {DiscoverNodeID}")
         '启动
@@ -194,25 +207,29 @@ Public Class PageLinkMain
         If Code Is Nothing Then Return "邀请码为空！"
         Code = FixCodeFormat(Code)
         '判断类型
-        If Not (Code.Length >= 14 AndAlso Code(0) = "P"c AndAlso Code(5) = "-"c AndAlso Code(11) = "-"c) Then
+        If Not (Code.Length = CODE_TOTAL_LEN AndAlso Code.StartsWithF("PCLB-") AndAlso
+                Code(4) = "-"c AndAlso Code(10) = "-"c AndAlso Code(16) = "-"c AndAlso Code(22) = "-"c) Then
             If Code.StartsWithF("U/") Then 'HMCL
                 Return "请让房主使用 PCL 创建房间！"
             ElseIf Code.Length = 10 Then 'PCL CE
                 Return "请让房主使用非社区版的 PCL 创建房间！"
+            ElseIf Code.Length = 23 AndAlso Code(0) = "P"c AndAlso Code(11) = "-"c Then
+                '旧格式（没有 PCLB- 前缀）
+                Return "这是旧版邀请码。请双方都升级到最新版 PCL 后再联机——新版房间名带 PCLB- 前缀，中继只给这种房间转发。"
             Else
                 Return "邀请码有误，请让房主使用 PCL 创建房间！"
             End If
         End If
         '校验版本
-        If Code.Length >= 23 AndAlso Code(17) = "-"c AndAlso
-            Val(Code.Substring(18, 2)) > INVITE_CODE_VERSION Then Return "你的 PCL 版本太老了，请在更新 PCL 之后再联机！"
+        If Val(Code.Substring(23, 2)) > INVITE_CODE_VERSION Then Return "你的 PCL 版本太老了，请在更新 PCL 之后再联机！"
         Return Nothing
     End Function
     Private Shared Function FixCodeFormat(Code As String) As String
         Code = Code.Between("【", "】").Between("[", "]") '从完整消息中提取
         Code = Code.Upper.Replace("O", "0").Replace("I", "1") '输入修正
         '版本 1 兼容
-        If Code.Length >= 17 AndAlso (Code.Length < 23 OrElse (Code.Length >= 18 AndAlso Code(17) <> "-"c)) Then
+        If Code.Length >= 17 AndAlso Code.Length < CODE_TOTAL_LEN AndAlso
+           (Code.Length < 23 OrElse (Code.Length >= 18 AndAlso Code(17) <> "-"c)) Then
             Code = Code.Substring(0, 17) & "-0105E"
         End If
         Return Code
