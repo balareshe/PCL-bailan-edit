@@ -16,6 +16,7 @@
                         <TextBlock VerticalAlignment="Center" HorizontalAlignment="Left" Text="使用节点" Margin="0,0,16,0" />
                         <local:MyComboBox x:Name="ComboNode" Grid.Column="1"
                             MinWidth="360" MaxDropDownHeight="320" HorizontalAlignment="Stretch"
+                            Height="36" FontSize="15" Padding="8,0,0,0"
                             ToolTip="决定本机联机时用哪些中继。&#xa;&#xa;自动：使用服务端下发的所有未过期节点。&#xa;指定某个节点：只用它。&#xa;自建节点：只用你在「高级设置 → 自定义节点」里填的地址。&#xa;&#xa;服务端下发的节点由维护者在后台配置，客户端无需更新。" />
                     </Grid>
                     <Grid Margin="0,0,0,2">
