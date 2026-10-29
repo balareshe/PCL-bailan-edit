@@ -6,6 +6,21 @@ Imports PCL
 
 Public Class PageLinkMain
     '邀请码格式版本。3 = 房间名带 PCLB- 前缀（配合中继白名单 PCLB-*）
+    'EasyTier 联机模块压缩包的 SHA256（按架构）。
+    '这个包从 GitHub 下载、解压后以管理员权限运行，不校验哈希等于把
+    '「远程代码执行」交给任何能拦截该下载的人（恶意根证书、被控 CDN 等）。
+    '升级 EasyTier 版本时必须同步更新这里的哈希。
+    Private Const EasytierZipSha256X64 As String =
+        "cd43d90b28b68b3518f5c5e694f47201dffde76264ee1e0fbeb85ab64c2c4972"
+
+    ''' <summary>返回当前架构对应的联机模块哈希，未知架构返回空字符串。</summary>
+    Private Shared Function ExpectedEasytierZipSha256(Arch As String) As String
+        Select Case Arch
+            Case "x86_64" : Return EasytierZipSha256X64
+            Case Else : Return ""
+        End Select
+    End Function
+
     Private Const INVITE_CODE_VERSION As Integer = 3
     'PCLB-P{4位端口hex}-{5位随机}  =>  16 字符
     Private Const CODE_NAME_LEN As Integer = 16
@@ -564,6 +579,31 @@ Public Class PageLinkMain
         '解压文件
         UpdateLoadingPage("正在解压联机模块……", "解压联机模块")
         If FileUtils.Exists(PathEasyTier & "EasyTier.zip") Then
+            '先校验哈希，通过了才解压。解压出来的 exe 会以管理员权限启动，
+            '所以这一步是「远程代码执行」的唯一闸门。
+            Dim ZipArch As String = "x86_64"
+            Select Case GetType(String).Assembly.GetName().ProcessorArchitecture
+                Case ProcessorArchitecture.X86 : ZipArch = "i686"
+                Case ProcessorArchitecture.Arm : ZipArch = "arm64"
+            End Select
+            Dim ExpectedSha As String = ExpectedEasytierZipSha256(ZipArch)
+            If ExpectedSha = "" Then
+                Logger.Warn($"当前架构 {ZipArch} 没有预置联机模块哈希，跳过校验（存在被篡改风险）")
+                Hint("联机模块未做哈希校验，请确认网络环境可信", HintType.Red, False)
+            Else
+                Dim ActualSha As String = CryptographyUtils.ComputeFileHash(
+                    PathEasyTier & "EasyTier.zip", CryptographyUtils.HashMethod.Sha256).Trim().ToLower()
+                If ActualSha <> ExpectedSha Then
+                    Logger.Error($"联机模块校验失败：期望 {ExpectedSha}，实际 {ActualSha}")
+                    FileUtils.Delete(PathEasyTier & "EasyTier.zip")
+                    Settings.Set("LinkEasyTierVersion", -1)
+                    Panic("联机模块校验失败",
+                        $"下载的联机模块与预期哈希不一致，可能被中途篡改。{vbCrLf}{vbCrLf}" &
+                        $"已删除该文件，请重试；若反复失败，说明你的网络或代理可能被劫持。")
+                    Return
+                End If
+                Logger.Info("联机模块哈希校验通过")
+            End If
             '解压
             Dim ExtractPath As String = RequestTaskTempFolder()
             FileUtils.ExtractToDirectory(PathEasyTier & "EasyTier.zip", ExtractPath,

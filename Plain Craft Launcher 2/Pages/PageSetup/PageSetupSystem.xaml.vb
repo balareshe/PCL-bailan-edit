@@ -1,4 +1,4 @@
-﻿Public Class PageSetupSystem
+Public Class PageSetupSystem
 
 
     Private Sub PageSetupSystem_Loaded(sender As Object, e As RoutedEventArgs) Handles Me.Loaded
@@ -105,11 +105,18 @@
     ''' </summary>
     Public Shared Function IsLauncherNewest() As Boolean?
         Try
-            '确认服务器公告是否正常
+            'Notice.cfg 格式：快照版版本号|正式版版本号|公告ID
             Dim ServerContent As String = If(FileUtils.TryReadAsString(PathTemp & "Cache\Notice.cfg"), "")
-            If ServerContent.Split("|").Count < 3 Then Return Nothing
-            '确认是否为最新
-            Return ServerContent.Split("|")(If(BuildType = BuildTypes.Release, 2, 1)) <= VersionCode
+            Dim Parts As String() = ServerContent.Split("|"c)
+            If Parts.Length < 3 Then Return Nothing
+            '正式版取第 2 段、快照版取第 1 段（与写入格式一致）
+            Dim Raw As String = Parts(If(BuildType = BuildTypes.Release, 1, 0)).Trim
+            '公告 ID 那一段可以是空的，这里必须容错：直接拿字符串比大小会在
+            '空字符串上抛 FormatException，把「是否最新」变成永远"无法确认"。
+            If Raw.Length = 0 Then Return Nothing
+            Dim ServerCode As Integer
+            If Not Integer.TryParse(Raw, ServerCode) Then Return Nothing
+            Return ServerCode <= VersionCode
         Catch ex As Exception
             Logger.Error(ex, "确认启动器更新失败")
             Return Nothing
