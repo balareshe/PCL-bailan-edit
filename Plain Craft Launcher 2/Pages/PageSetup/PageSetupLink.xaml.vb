@@ -54,7 +54,12 @@ Public Class PageSetupLink
         _nodeAddresses.Clear()
 
         Dim Nodes As List(Of JObject) = LinkNodes()
-        RefreshNodeCombo(Nodes)
+        '下拉框是附加功能，构建失败也不该影响节点列表与页面本身
+        Try
+            RefreshNodeCombo(Nodes)
+        Catch ex As Exception
+            Logger.Warn(ex, "构建「使用节点」下拉框失败")
+        End Try
         If Nodes.Count = 0 Then
             PanNodes.Children.Add(New TextBlock With {
                 .Text = "没有内置节点", .Opacity = 0.6, .Margin = New Thickness(0, 6, 0, 0)})

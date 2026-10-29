@@ -629,12 +629,24 @@ Friend Module ModSecret
 
     ''' <summary>用户选定的节点地址；空字符串表示「自动（全部可用节点）」。</summary>
     Friend Function LinkSelectedNode() As String
-        Return If(Settings.Get(Of String)("LinkSelectedNode"), "").Trim
+        'Settings.Get 对未注册的键会抛 KeyNotFoundException。这个函数在联机页
+        'Loaded 时就会调用，一旦抛出去就是进页面直接闪退——所以这里兜住，
+        '读不到就当「自动」，绝不让它把页面带崩。
+        Try
+            Return If(Settings.Get(Of String)("LinkSelectedNode"), "").Trim
+        Catch ex As Exception
+            Logger.Warn(ex, "读取已选联机节点失败，按「自动」处理")
+            Return ""
+        End Try
     End Function
 
     ''' <summary>记住用户选择的节点地址。</summary>
     Friend Sub SetLinkSelectedNode(Address As String)
-        Settings.Set("LinkSelectedNode", If(Address, "").Trim)
+        Try
+            Settings.Set("LinkSelectedNode", If(Address, "").Trim)
+        Catch ex As Exception
+            Logger.Warn(ex, "保存已选联机节点失败")
+        End Try
     End Sub
     ''' <summary>
     ''' 未过期的内置节点地址列表（若用户选定了某个节点，只返回那一个）。
