@@ -11,7 +11,23 @@ Friend Module ModSecret
     '环境变量 PCL_MS_CLIENT_ID 仍然优先，便于临时切换测试
     Public OAuthClientId As String = If(Environment.GetEnvironmentVariable("PCL_MS_CLIENT_ID"), "504721c5-1f26-4d60-afa4-ae3f4b65be64")
     'CurseForge API Key
+    '客户端默认不带任何 CurseForge 凭证：API 请求走服务端代理，key 只在服务器上。
+    '只有在本地调试时用环境变量 PCL_CURSEFORGE_API_KEY 直连才会用到它。
     Public CurseForgeAPIKey As String = If(Environment.GetEnvironmentVariable("PCL_CURSEFORGE_API_KEY"), "")
+
+    ''' <summary>
+    ''' CurseForge API 代理前缀（形如 host/cf），由 OtaBase 推导，
+    ''' 这样换域名或换 CDN 时两处一起变。
+    ''' </summary>
+    Friend Function CurseForgeProxyHost() As String
+        Dim B As String = OtaBase.TrimEnd("/"c)
+        Dim Idx As Integer = B.IndexOf("://", StringComparison.Ordinal)
+        If Idx >= 0 Then B = B.Substring(Idx + 3)
+        If B.EndsWith("/pcl2", StringComparison.OrdinalIgnoreCase) Then
+            B = B.Substring(0, B.Length - 5)
+        End If
+        Return B & "/cf"
+    End Function
     '用于匿名数据收集的腾讯云日志服务上报 URL，形如 https://{region}.cls.tencentcs.com/track?topic_id={topic_id}
     Public Const ClsBaseUrl As String = ""
 
@@ -101,7 +117,11 @@ Friend Module ModSecret
             End If
         End If
         If Not SimulateBrowserHeaders Then Req.Headers.Add("Referer", $"http://{VersionCode}.open.pcl2.server/")
-        If Url.Contains("api.curseforge.com") OrElse Url.Contains("forgecdn.net") Then Req.Headers.Add("x-api-key", CurseForgeAPIKey)
+        '只有在本地通过环境变量配了 key 时才带；正常走代理时 URL 是自家域名，不需要也不该带
+        If CurseForgeAPIKey <> "" AndAlso
+           (Url.Contains("api.curseforge.com") OrElse Url.Contains("forgecdn.net")) Then
+            Req.Headers.Add("x-api-key", CurseForgeAPIKey)
+        End If
     End Sub
 
 #End Region

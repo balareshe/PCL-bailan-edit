@@ -1298,12 +1298,14 @@
     End Function
 
     'Mod 下载源
+    'CurseForge 的 API 走服务端代理（/cf/v1/...）：API Key 只存在服务器上，
+    '客户端不带任何凭证。文件下载不走代理（流量太大），继续用下面的 forgecdn 镜像改写。
     Public Function DlSourceModGet(Original As String) As String
         Return Original.
             Replace("api.modrinth.com", "mod.mcimirror.top/modrinth").
             Replace("staging-api.modrinth.com", "mod.mcimirror.top/modrinth").
             Replace("cdn.modrinth.com", "mod.mcimirror.top").
-            Replace("api.curseforge.com", "mod.mcimirror.top/curseforge").
+            Replace("api.curseforge.com", ModSecret.CurseForgeProxyHost()).
             Replace("edge.forgecdn.net", "mod.mcimirror.top").
             Replace("mediafilez.forgecdn.net", "mod.mcimirror.top").
             Replace("media.forgecdn.net", "mod.mcimirror.top")
