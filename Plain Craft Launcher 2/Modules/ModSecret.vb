@@ -198,6 +198,8 @@ Friend Module ModSecret
     Friend Const UpdateFileName As String = "LatestOta.exe"
 
     Friend IsUpdateWaitingRestart As Boolean = False
+    ''' <summary>本次更新包期望的 SHA256，启动更新程序前会用它再复核一次。</summary>
+    Friend UpdateExpectedSha As String = ""
 
     ''' <summary>
     ''' 拉取 OTA 版本信息，同时刷新 Notice.cfg 供 IsLauncherNewest 判断。
@@ -309,6 +311,7 @@ Friend Module ModSecret
                     Catch ex As Exception
                         Logger.Warn(ex, "写入更新日志缓存失败")
                     End Try
+                    UpdateExpectedSha = ExpectSha
                     Logger.Info($"更新包已就绪：{Latest}")
                     IsUpdateWaitingRestart = True
                     UpdateRestart(True)
@@ -375,6 +378,22 @@ Friend Module ModSecret
                 Logger.Warn(ex, "无法把更新程序复制到启动器目录，改为从临时目录运行")
             End Try
             Dim Args As String = $"--update {Process.GetCurrentProcess().Id} ""{PathExe}"" ""{UpdaterPath}"" True"
+            '启动前再校验一次哈希：从下载完成到此刻，文件可能被本地其他进程
+            '（恶意软件、被替换的同步目录）换掉。校验与执行之间的窗口越小越好。
+            If UpdateExpectedSha <> "" Then
+                Dim ActualSha As String =
+                    CryptographyUtils.ComputeFileHash(UpdaterPath, CryptographyUtils.HashMethod.Sha256).Trim().ToLower()
+                If ActualSha <> UpdateExpectedSha Then
+                    Logger.Error($"更新程序启动前校验失败：期望 {UpdateExpectedSha}，实际 {ActualSha}")
+                    Try
+                        FileUtils.Delete(UpdaterPath)
+                    Catch
+                    End Try
+                    RunInUiWait(Sub() Hint("更新包在下载后被改动过，已中止更新，请重新检查更新", HintType.Red))
+                    Return
+                End If
+                Logger.Info("启动前复核更新程序哈希：一致")
+            End If
             Logger.Info($"启动更新程序：{UpdaterPath} {Args}")
             StartProcess(UpdaterPath, Args)
             If TriggerRestartAndByEnd Then RunInUiWait(Sub() FormMain.EndProgramForce())
@@ -675,6 +694,13 @@ Friend Module ModSecret
             Dim Id As String = Obj("id").ToString()
             If Id = Settings.Get(Of String)("SystemLastNoticeId") Then Return
             Dim Content As String = Obj("content").ToString()
+            '公告会原样弹给用户，等同官方通知，必须先验签
+            Try
+                VerifyNoticeSignature(Obj)
+            Catch exSig As Exception
+                Logger.Error(exSig, "公告签名校验失败，已丢弃这条公告")
+                Return
+            End Try
             Dim Title As String = Obj("title").ToString()
             Logger.Info($"收到新公告 [{Id}]：{Title}")
             'MyMsgBox 默认不阻塞（Button2 为空且 ForceWait=False 时直接返回），
@@ -730,6 +756,24 @@ Friend Module ModSecret
     ''' 签名内容是与服务端约定的「字段以 chr(31) 连接」的规范字符串，
     ''' 刻意不签 JSON 原文——两侧重新序列化 JSON 极易因键序/空格/转义而失配。
     ''' </summary>
+    ''' <summary>
+    ''' 校验 notice.json 的数字签名。失败抛异常，调用方不得展示这条公告。
+    ''' 公告是直接弹给用户的「官方通知」，不签名就等于把钓鱼入口交给
+    ''' 任何有能力劫持 TLS 的人。
+    ''' </summary>
+    Friend Sub VerifyNoticeSignature(Obj As JObject)
+        Dim SigText As String = If(Obj("sig")?.ToString(), "").Trim
+        If SigText.Length = 0 Then
+            Throw New Exception("公告缺少数字签名，已拒绝（服务端可能未配置签名私钥）")
+        End If
+        Dim Canon As String = String.Join(Chr(31).ToString(), {
+            "notice",
+            Obj("id").ToString(),
+            If(Obj("title")?.ToString(), ""),
+            If(Obj("content")?.ToString(), "")})
+        VerifyRsaSignature(Encoding.UTF8.GetBytes(Canon), SigText, "公告")
+        Logger.Info("公告签名校验通过")
+    End Sub
     Friend Sub VerifyVersionSignature(Obj As JObject)
         Dim SigText As String = If(Obj("sig")?.ToString(), "")
         If SigText.Trim() = "" Then
