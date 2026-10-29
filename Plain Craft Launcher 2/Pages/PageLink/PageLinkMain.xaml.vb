@@ -560,12 +560,25 @@ Public Class PageLinkMain
             Settings.Set("LinkEasyTierVersion", -1)
         End If
         Dim LocalVersion As Integer = Settings.Get(Of Integer)("LinkEasyTierVersion")
-        ServerVersion = ServerConfig("Link")("EasyTierVersion")
+        '优先用服务端下发的模块版本（签名保护），没有就用编译期内置的
+        Dim ModuleVer As Integer = LinkModuleVersion()
+        ServerVersion = If(ModuleVer > 0, ModuleVer, ServerConfig("Link")("EasyTierVersion").ToObject(Of Integer)())
         Dim RequiredFiles As New List(Of NetFile)
         Logger.Info($"EasyTier 本地版本：{LocalVersion}，需求版本：{ServerVersion}")
         If LocalVersion < ServerVersion Then
+            '下载地址优先取签名清单里的，没有才用内置列表
+            Dim ModuleEntry As JObject = LinkModuleEntry(Architecture)
+            Dim ModuleUrl As String = If(ModuleEntry IsNot Nothing,
+                If(ModuleEntry("url")?.ToString(), "").Trim, "")
+            Dim UrlList As New List(Of String)
+            If ModuleUrl.Length > 0 Then
+                UrlList.Add(ModuleUrl)
+            Else
+                UrlList.AddRange(ServerConfig("Link")("Downloads").Select(
+                    Function(UrlEntry) UrlEntry.ToString.Replace("{arch}", Architecture)))
+            End If
             RequiredFiles.Add(New NetFile(
-                ServerConfig("Link")("Downloads").Select(Function(UrlEntry) UrlEntry.ToString.Replace("{arch}", Architecture)),
+                UrlList,
                 PathEasyTier & "EasyTier.zip",
                 New FileChecker With {.MinSize = 1024 * 1024 * 2}))
         End If
@@ -586,7 +599,13 @@ Public Class PageLinkMain
                 Case ProcessorArchitecture.X86 : ZipArch = "i686"
                 Case ProcessorArchitecture.Arm : ZipArch = "arm64"
             End Select
-            Dim ExpectedSha As String = ExpectedEasytierZipSha256(ZipArch)
+            '期望哈希：签名清单优先，其次编译期内置常量
+            Dim ExpectedSha As String = ""
+            Dim HashEntry As JObject = LinkModuleEntry(ZipArch)
+            If HashEntry IsNot Nothing Then
+                ExpectedSha = If(HashEntry("sha256")?.ToString(), "").Trim().ToLower()
+            End If
+            If ExpectedSha = "" Then ExpectedSha = ExpectedEasytierZipSha256(ZipArch)
             If ExpectedSha = "" Then
                 Logger.Warn($"当前架构 {ZipArch} 没有预置联机模块哈希，跳过校验（存在被篡改风险）")
                 Hint("联机模块未做哈希校验，请确认网络环境可信", HintType.Red, False)

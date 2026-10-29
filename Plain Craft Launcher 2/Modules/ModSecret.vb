@@ -21,6 +21,72 @@ Friend Module ModSecret
         If Not UrlWithMark.EndsWithF("{CDN}") Then Return UrlWithMark
         Return UrlWithMark.Replace("{CDN}", "").Replace(" ", "%20")
     End Function
+    ''' <summary>已验签的联机模块清单（/pcl2/module.json）。Nothing 表示用编译期内置配置。</summary>
+    Friend LinkModule As JObject = Nothing
+
+    ''' <summary>
+    ''' 拉取联机模块清单并验签。签名覆盖「版本 + 按架构排序的 url/sha256」，
+    ''' 所以维护者只要改服务端一个文件就能升级 EasyTier，不必重新发客户端；
+    ''' 而哈希受同一把 RSA 私钥保护，拦截下载也换不掉。
+    ''' </summary>
+    Friend Function LoadLinkModuleFromOta() As JObject
+        Try
+            Dim Raw As String = NetRequestByClient(OtaBase & "module.json", RequireJson:=True)
+            Dim Obj As JObject = JObject.Parse(Raw)
+            Dim SigText As String = If(Obj("sig")?.ToString(), "").Trim
+            If SigText.Length = 0 Then
+                Logger.Warn("联机模块清单缺少签名，改用内置配置")
+                Return Nothing
+            End If
+            Dim Ver As Integer = If(Obj("version") IsNot Nothing, Obj("version").ToObject(Of Integer)(), 0)
+            Dim Files As JObject = TryCast(Obj("files"), JObject)
+            If Files Is Nothing Then Return Nothing
+            '规范串必须与服务端逐字节一致：module + 版本 + 按架构名排序的 url/sha256
+            Dim Parts As New List(Of String)
+            Parts.Add("module")
+            Parts.Add(Ver.ToString())
+            Dim ArchNames As List(Of String) = Files.Properties().Select(Function(p) p.Name).ToList()
+            ArchNames.Sort(StringComparer.Ordinal)
+            For Each Arch As String In ArchNames
+                Dim Entry As JObject = TryCast(Files(Arch), JObject)
+                If Entry Is Nothing Then Continue For
+                Parts.Add(String.Join(Chr(31).ToString(), {
+                    Arch,
+                    If(Entry("url")?.ToString(), ""),
+                    If(Entry("sha256")?.ToString(), "").Trim().ToLower()}))
+            Next
+            VerifyRsaSignature(Encoding.UTF8.GetBytes(String.Join(Chr(31).ToString(), Parts)),
+                               SigText, "联机模块清单")
+            Logger.Info($"联机模块清单校验通过：版本 {Ver}，架构 {String.Join(", ", ArchNames)}")
+            Return Obj
+        Catch ex As Exception
+            Logger.Warn(ex, "获取联机模块清单失败，改用内置配置")
+            Return Nothing
+        End Try
+    End Function
+
+    ''' <summary>清单里的模块版本号；没有清单返回 0。</summary>
+    Friend Function LinkModuleVersion() As Integer
+        Try
+            If LinkModule Is Nothing Then Return 0
+            If LinkModule("version") Is Nothing Then Return 0
+            Return LinkModule("version").ToObject(Of Integer)()
+        Catch
+            Return 0
+        End Try
+    End Function
+
+    ''' <summary>取某个架构的清单条目；没有则返回 Nothing。</summary>
+    Friend Function LinkModuleEntry(Arch As String) As JObject
+        Try
+            If LinkModule Is Nothing Then Return Nothing
+            Dim Files As JObject = TryCast(LinkModule("files"), JObject)
+            If Files Is Nothing Then Return Nothing
+            Return TryCast(Files(Arch), JObject)
+        Catch
+            Return Nothing
+        End Try
+    End Function
     ''' <summary>
     ''' 设置 Headers 的 UA、Referer。
     ''' </summary>
@@ -763,6 +829,7 @@ Friend Module ModSecret
         'Peers 留空时联机页会提示用户去填写，不会带着空地址强行启动 EasyTier。
         'EasyTier 为 LGPL-3.0，二进制直接从官方 GitHub Release 下载，不随本仓库分发。
         MigrateLinkSelection()
+        LinkModule = LoadLinkModuleFromOta()
         '节点列表以服务端为唯一来源：服务端下发什么就用什么（空就是空）。
         '只有拉取失败时才退到上次成功的缓存，避免一断网就什么都用不了。
         Dim LinkNodeList As JArray = LoadLinkNodesFromOta()
