@@ -62,7 +62,7 @@ Public Class PageSetupLink
         End Try
         If Nodes.Count = 0 Then
             PanNodes.Children.Add(New TextBlock With {
-                .Text = "没有内置节点", .Opacity = 0.6, .Margin = New Thickness(0, 6, 0, 0)})
+                .Text = "服务端没有下发任何节点。需要自己搭中继的话，把上面改成「自建节点」并填写地址。", .Opacity = 0.6, .Margin = New Thickness(0, 6, 0, 0), .TextWrapping = TextWrapping.Wrap})
             Return
         End If
 
@@ -197,10 +197,34 @@ Public Class PageSetupLink
                     SelectedIndex = _comboAddresses.Count - 1
                 End If
             Next
+            '最后一项：自建节点。选中它才会启用「高级设置 → 自定义节点」，
+            
+            ComboNode.Items.Add(New MyComboBoxItem With {.Content = "自建节点（自己填地址）"})
+            _comboAddresses.Add(LinkCustomSentinel)
+            If Selected = LinkCustomSentinel Then SelectedIndex = _comboAddresses.Count - 1
             ComboNode.SelectedIndex = SelectedIndex
+            UpdateCustomPeerState()
         Finally
             _nodeComboLoading = False
         End Try
+    End Sub
+
+    ''' <summary>
+    ''' 同步「自定义节点」输入框的可用状态与说明文字。
+    ''' 只有选了「自建节点」才启用它；否则置灰并明确说明「填了也不生效」，
+    ''' 避免用户以为填了就会用（旧版本是填了就优先用，容易误会）。
+    ''' </summary>
+    Private Sub UpdateCustomPeerState()
+        If TextCustomPeer Is Nothing Then Return
+        Dim UseCustom As Boolean = LinkUseCustomNode()
+        TextCustomPeer.IsEnabled = UseCustom
+        TextCustomPeer.Opacity = If(UseCustom, 1.0, 0.45)
+        If LabNodeNote IsNot Nothing Then
+            LabNodeNote.Text = If(UseCustom,
+                $"当前为{vbLQ}自建节点{vbRQ}模式：只使用你在「高级设置 → 自定义节点」里填的地址，服务端下发的节点不参与。",
+                $"节点列表由服务端下发。想用自己搭的中继，请把上面的{vbLQ}使用节点{vbRQ}改成{vbLQ}自建节点{vbRQ}；" &
+                $"否则「高级设置 → 自定义节点」里填的内容不生效。延迟每 10 秒刷新一次。")
+        End If
     End Sub
 
     ''' <summary>选定某个节点就记住它；「自动」记为空字符串。</summary>
@@ -211,7 +235,9 @@ Public Class PageSetupLink
         Dim Addr As String = _comboAddresses(Index)
         If Addr = LinkSelectedNode() Then Return
         SetLinkSelectedNode(Addr)
-        Hint(If(Addr.Length = 0, "已改为自动选择节点", "已选定节点，下次进入联机页面时生效"),
+        UpdateCustomPeerState()
+        Hint(If(Addr = LinkCustomSentinel, "已切到自建节点，请在高级设置里填写中继地址",
+             If(Addr.Length = 0, "已改为使用服务端下发的节点", "已选定节点，下次进入联机页面时生效")),
              HintType.Green, False)
     End Sub
 

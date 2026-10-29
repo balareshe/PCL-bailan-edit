@@ -10,12 +10,13 @@
                 <StackPanel Margin="25,40,25,20">
                     <Grid Margin="0,0,0,12">
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="92" />
                             <ColumnDefinition Width="1*" />
                         </Grid.ColumnDefinitions>
-                        <TextBlock VerticalAlignment="Center" HorizontalAlignment="Left" Text="使用节点" Margin="0,0,25,0" />
+                        <TextBlock VerticalAlignment="Center" HorizontalAlignment="Left" Text="使用节点" Margin="0,0,16,0" />
                         <local:MyComboBox x:Name="ComboNode" Grid.Column="1"
-                            ToolTip="选择本机联机时使用的中继节点。&#xa;&#xa;「自动」会尝试所有未过期的节点；选定某一个后只使用它。&#xa;&#xa;节点列表由服务端下发，更换节点不需要重新发布启动器。" />
+                            MinWidth="360" MaxDropDownHeight="320" HorizontalAlignment="Stretch"
+                            ToolTip="决定本机联机时用哪些中继。&#xa;&#xa;自动：使用服务端下发的所有未过期节点。&#xa;指定某个节点：只用它。&#xa;自建节点：只用你在「高级设置 → 自定义节点」里填的地址。&#xa;&#xa;服务端下发的节点由维护者在后台配置，客户端无需更新。" />
                     </Grid>
                     <Grid Margin="0,0,0,2">
                         <Grid.ColumnDefinitions>

@@ -562,38 +562,47 @@ Public Class PageLinkMain
         Task.Progress = 0.07
         '获取节点列表
         UpdateLoadingPage("正在获取节点列表……", "获取节点列表")
+        '节点来源由「设置 → 联机 → 使用节点」决定：
+        '  自建节点 -> 只用用户自己填的地址，服务端下发的节点不参与
+        '  自动 / 指定某个服务端节点 -> 用服务端下发的节点（LinkNodePeers 已按选择过滤）
+        Dim UseCustom As Boolean = LinkUseCustomNode()
+        Dim CustomPeerList As List(Of String) = LinkCustomPeerList()
+        Dim ServerPeers As List(Of String) = LinkNodePeers()
         Dim RawPeers As List(Of String)
-        Dim CustomPeers As String = Settings.Get(Of String)("LinkCustomPeer")
-        Dim BuiltinPeers As List(Of String) = LinkNodePeers()
-        If String.IsNullOrWhiteSpace(CustomPeers) Then
-            If BuiltinPeers.Count = 0 Then
-                '内置节点全部过期，且用户没填自定义地址
+        If UseCustom Then
+            If CustomPeerList.Count = 0 Then
+                Panic("自建节点还没填地址",
+                    $"当前的「使用节点」是 {vbLQ}自建节点{vbRQ}，但没有填写任何中继地址。{vbCrLf}{vbCrLf}" &
+                    $"请打开 {vbLQ}设置 → 联机 → 高级设置 → 自定义节点{vbRQ} 填写，{vbCrLf}" &
+                    $"格式如 tcp://节点地址:11010。")
+                Return
+            End If
+            If DiscoverNodeID <> -2 AndAlso Not IsServerSide Then
+                Hint("你用的是自建节点，但邀请码显示房主没用。请确认双方设置一致。", HintType.Red)
+            End If
+            RawPeers = CustomPeerList
+            Logger.Info($"使用自建节点：{String.Join(", ", RawPeers)}")
+        Else
+            If ServerPeers.Count = 0 Then
                 Panic("没有可用的联机节点",
-                    $"所有内置联机节点都已到期，你也没有填写自定义节点。{vbCrLf}{vbCrLf}" &
-                    $"请打开 {vbLQ}设置 → 联机 → 自定义节点{vbRQ} 填写中继地址。{vbCrLf}" &
-                    $"格式如 tcp://节点地址:11010 或 udp://节点地址:11010。{vbCrLf}{vbCrLf}" &
-                    $"房主与所有加入者必须填写至少一个相同的节点。")
+                    $"服务端没有下发任何可用节点，你也没有选择 {vbLQ}自建节点{vbRQ}。{vbCrLf}{vbCrLf}" &
+                    $"要么在后台给这个启动器配置节点，要么把 {vbLQ}设置 → 联机 → 使用节点{vbRQ}{vbCrLf}" &
+                    $"改成 {vbLQ}自建节点{vbRQ} 并自己填一个中继地址。")
                 Return
             End If
             If DiscoverNodeID = -2 AndAlso Not IsServerSide Then
-                Panic("未填写自定义节点设置",
-                  $"房主使用了自定义节点，所以你也必须填写相同的地址。{vbCrLf}" &
-                  $"请打开 {vbLQ}设置 → 联机 → 自定义节点{vbRQ} 填写后重试。")
+                Panic("房主使用了自建节点",
+                    $"房主用的是自建中继，你也必须用同样的地址。{vbCrLf}" &
+                    $"请把 {vbLQ}设置 → 联机 → 使用节点{vbRQ} 改成 {vbLQ}自建节点{vbRQ}，{vbCrLf}" &
+                    $"并在高级设置里填写与房主相同的中继地址。")
                 Return
             End If
-            RawPeers = BuiltinPeers
-            '内置中继是直连，本来就没有「发现节点」这个概念，DiscoverNodeID 会停在 -1。
-            '但 GetInviteCode 会把 -1 编码成 0（末尾 000），而加入方把 000 解释成
-            '「房主使用了自定义节点」，于是用房主的内置节点建房时，加入方会被误拦。
-            '这里给房主一个非零哨兵值，让邀请码末尾变成 001。
+            RawPeers = ServerPeers
+            '服务端节点是直连，本来没有「发现节点」概念，DiscoverNodeID 会停在 -1。
+            '但 GetInviteCode 会把 -1 编码成 0（末尾 000），加入方把 000 解释成
+            '「房主用了自定义节点」而误拦。这里给房主一个非零哨兵，让末尾变成 001。
             If IsServerSide Then DiscoverNodeID = 1
-            Logger.Info($"使用内置节点：{String.Join(", ", RawPeers)}")
-        Else
-            If DiscoverNodeID <> -2 AndAlso Not IsServerSide Then
-                Hint("你填写了自定义节点，但邀请码显示房主没有使用。请确认双方设置一致。", HintType.Red)
-            End If
-            RawPeers = CustomPeers.Split("，,".ToCharArray).Select(Function(p) p.Trim).Where(Function(p) Not String.IsNullOrEmpty(p)).ToList()
-            Logger.Info($"使用自定义节点：{CustomPeers}")
+            Logger.Info($"使用服务端节点：{String.Join(", ", RawPeers)}")
         End If
         Task.Progress = 0.13
         '获取空闲端口

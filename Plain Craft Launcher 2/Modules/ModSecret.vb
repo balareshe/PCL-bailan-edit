@@ -588,9 +588,9 @@ Friend Module ModSecret
     End Function
 
     ''' <summary>
-    ''' 从 OTA 拉取联机节点列表并验签。失败返回 Nothing，调用方退回内置节点。
-    ''' 拉取失败不能被当成「管理员清空了节点」；拿到空数组时也退回内置节点，
-    ''' 避免一次误操作让所有人都联机不了。
+    ''' 从 OTA 拉取联机节点列表并验签。
+    ''' 成功时返回服务端下发的数组（**可能为空**，空就是空，不退回内置）；
+    ''' 失败（网络/验签/格式）返回 Nothing，由调用方决定用缓存还是当作没有节点。
     ''' </summary>
     Friend Function LoadLinkNodesFromOta() As JArray
         Try
@@ -598,15 +598,13 @@ Friend Module ModSecret
             Dim Obj As JObject = JObject.Parse(Raw)
             Dim SigText As String = If(Obj("sig")?.ToString(), "").Trim
             If SigText.Length = 0 Then
-                Logger.Warn("节点列表缺少签名，已拒绝，改用内置节点")
+                Logger.Warn("节点列表缺少签名，已拒绝")
                 Return Nothing
             End If
             Dim NodesJson As JToken = Obj("nodes")
             If NodesJson Is Nothing OrElse NodesJson.Type <> JTokenType.Array Then Return Nothing
-            If NodesJson.Count = 0 Then
-                Logger.Warn("OTA 下发的节点列表为空，改用内置节点")
-                Return Nothing
-            End If
+            '注意：空数组是合法状态——管理员在后台把节点全删了就该是空的，
+            '不能再偷偷用编译期内置节点顶上，否则用户会看到「后台没配却有节点」。
             '签名覆盖「名称/地址/到期时间」三项且与顺序相关：这里不能重排、不能过滤
             Dim Parts As New List(Of String)
             Parts.Add("link")
@@ -620,14 +618,74 @@ Friend Module ModSecret
             VerifyRsaSignature(Encoding.UTF8.GetBytes(String.Join(Chr(31).ToString(), Parts)),
                                SigText, "节点列表")
             Logger.Info($"节点列表签名校验通过，共 {NodesJson.Count} 个")
-            Return CType(NodesJson, JArray)
+            Dim Result As JArray = CType(NodesJson, JArray)
+            SaveLinkNodesCache(Result)
+            Return Result
         Catch ex As Exception
-            Logger.Warn(ex, "获取联机节点列表失败，改用内置节点")
+            Logger.Warn(ex, "获取联机节点列表失败，将尝试使用上次缓存")
             Return Nothing
         End Try
     End Function
 
-    ''' <summary>用户选定的节点地址；空字符串表示「自动（全部可用节点）」。</summary>
+    ''' <summary>「使用节点」里代表自建节点的哨兵值。</summary>
+    Friend Const LinkCustomSentinel As String = "@custom"
+
+    ''' <summary>当前是否处于「自建节点」模式。</summary>
+    Friend Function LinkUseCustomNode() As Boolean
+        Try
+            Return LinkSelectedNode() = LinkCustomSentinel
+        Catch ex As Exception
+            Logger.Warn(ex, "判断自建节点模式失败")
+            Return False
+        End Try
+    End Function
+
+    ''' <summary>解析用户自己填的中继地址（英文/中文逗号分隔）。</summary>
+    Friend Function LinkCustomPeerList() As List(Of String)
+        Dim Result As New List(Of String)
+        Try
+            Dim Raw As String = Settings.Get(Of String)("LinkCustomPeer")
+            If String.IsNullOrWhiteSpace(Raw) Then Return Result
+            For Each Part As String In Raw.Split("，,".ToCharArray)
+                Dim Addr As String = Part.Trim
+                If Addr.Length > 0 Then Result.Add(Addr)
+            Next
+        Catch ex As Exception
+            Logger.Warn(ex, "读取自定义节点地址失败")
+        End Try
+        Return Result
+    End Function
+
+    ''' <summary>联机节点列表的离线缓存：拉取失败时用它，避免一断网就全空。</summary>
+    Private Const LinkCacheRelPath As String = "Cache\LinkNodes.json"
+
+    Private Sub SaveLinkNodesCache(Nodes As JArray)
+        Try
+            Dim Obj As New JObject(
+                New JProperty("fetchedAt", Date.Now.ToString("yyyy-MM-dd HH:mm:ss")),
+                New JProperty("nodes", Nodes.DeepClone()))
+            FileUtils.Write(PathTemp & LinkCacheRelPath, Obj.ToString(Formatting.None), Encoding.UTF8)
+        Catch ex As Exception
+            Logger.Warn(ex, "写入联机节点缓存失败")
+        End Try
+    End Sub
+
+    Private Function LoadLinkNodesCache() As JArray
+        Try
+            Dim Text As String = FileUtils.TryReadAsString(PathTemp & LinkCacheRelPath)
+            If String.IsNullOrWhiteSpace(Text) Then Return Nothing
+            Dim Obj As JObject = JObject.Parse(Text)
+            Dim FetchedAt As String = If(Obj("fetchedAt")?.ToString(), "")
+            Dim Arr As JToken = Obj("nodes")
+            If Arr Is Nothing OrElse Arr.Type <> JTokenType.Array Then Return Nothing
+            Logger.Info($"使用缓存的联机节点列表（抓取于 {FetchedAt}，共 {Arr.Count} 个）")
+            Return CType(Arr, JArray)
+        Catch ex As Exception
+            Logger.Warn(ex, "读取联机节点缓存失败")
+            Return Nothing
+        End Try
+    End Function
+    ''' <summary>用户选定的节点地址；空字符串表示「自动（全部可用节点）」，"@custom" 表示自建。</summary>
     Friend Function LinkSelectedNode() As String
         'Settings.Get 对未注册的键会抛 KeyNotFoundException。这个函数在联机页
         'Loaded 时就会调用，一旦抛出去就是进页面直接闪退——所以这里兜住，
@@ -652,15 +710,16 @@ Friend Module ModSecret
     ''' 未过期的内置节点地址列表（若用户选定了某个节点，只返回那一个）。
     ''' </summary>
     Friend Function LinkNodePeers() As List(Of String)
+        '自建节点模式：只用用户填的地址，服务端下发的节点完全不参与
+        If LinkUseCustomNode() Then Return LinkCustomPeerList()
+
         Dim Selected As String = LinkSelectedNode()
-        Dim Result = CollectLinkPeers(Selected)
-        '选中的节点被删掉、过期或改名了：退回全部可用节点，
-        '不能让用户卡在一个已经不存在的选择上连不上房间。
-        If Result.Count = 0 AndAlso Selected.Length > 0 Then
-            Logger.Warn($"选定的节点 {Selected} 已不可用，退回全部可用节点")
-            Result = CollectLinkPeers(String.Empty)
+        If Selected.Length > 0 Then
+            Dim One = CollectLinkPeers(Selected)
+            If One.Count > 0 Then Return One
+            Logger.Warn($"选定的节点 {Selected} 已不可用，退回全部服务端节点")
         End If
-        Return Result
+        Return CollectLinkPeers(String.Empty)
     End Function
 
     ''' <summary>按指定地址收集可用节点；地址为空表示全部。</summary>
@@ -677,15 +736,33 @@ Friend Module ModSecret
         Return Result
     End Function
 
+    ''' <summary>
+    ''' 老版本只要填了「自定义节点」就一定用它；新版本默认是「自动（服务端节点）」，
+    ''' 会让这类用户的地址静默失效、联机突然连不上。首次运行时迁移成「自建节点」，
+    ''' 让他们在界面上能看见自己处于自建模式。
+    ''' </summary>
+    Private Sub MigrateLinkSelection()
+        Try
+            If LinkSelectedNode().Length > 0 Then Return
+            If LinkCustomPeerList().Count = 0 Then Return
+            SetLinkSelectedNode(LinkCustomSentinel)
+            Logger.Info("检测到已填写自定义节点，已自动把「使用节点」切换为自建节点")
+        Catch ex As Exception
+            Logger.Warn(ex, "迁移联机节点选择失败")
+        End Try
+    End Sub
     Friend Sub RefreshServerConfig()
         '联机（EasyTier）配置。
         '节点列表 API（uptime.easytier.cn）已下线，本修改版不内置任何公共中继地址，
         '而是由用户在「设置 → 联机 → 自定义节点」中填写。
         'Peers 留空时联机页会提示用户去填写，不会带着空地址强行启动 EasyTier。
         'EasyTier 为 LGPL-3.0，二进制直接从官方 GitHub Release 下载，不随本仓库分发。
-        '优先用 OTA 下发的节点列表（已验签），拿不到就退回编译期内置的。
+        MigrateLinkSelection()
+        '节点列表以服务端为唯一来源：服务端下发什么就用什么（空就是空）。
+        '只有拉取失败时才退到上次成功的缓存，避免一断网就什么都用不了。
         Dim LinkNodeList As JArray = LoadLinkNodesFromOta()
-        If LinkNodeList Is Nothing Then LinkNodeList = LinkNodesDefault()
+        If LinkNodeList Is Nothing Then LinkNodeList = LoadLinkNodesCache()
+        If LinkNodeList Is Nothing Then LinkNodeList = New JArray()
         ServerConfig = New JObject(
             New JProperty("Link", New JObject(
                 New JProperty("EasyTierVersion", 2),
