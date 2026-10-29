@@ -569,14 +569,79 @@ Friend Module ModSecret
     End Function
 
     ''' <summary>
-    ''' 未过期的内置节点地址列表。
+    ''' 从 OTA 拉取联机节点列表并验签。失败返回 Nothing，调用方退回内置节点。
+    ''' 拉取失败不能被当成「管理员清空了节点」；拿到空数组时也退回内置节点，
+    ''' 避免一次误操作让所有人都联机不了。
+    ''' </summary>
+    Friend Function LoadLinkNodesFromOta() As JArray
+        Try
+            Dim Raw As String = NetRequestByClient(OtaBase & "link.json", RequireJson:=True)
+            Dim Obj As JObject = JObject.Parse(Raw)
+            Dim SigText As String = If(Obj("sig")?.ToString(), "").Trim
+            If SigText.Length = 0 Then
+                Logger.Warn("节点列表缺少签名，已拒绝，改用内置节点")
+                Return Nothing
+            End If
+            Dim NodesJson As JToken = Obj("nodes")
+            If NodesJson Is Nothing OrElse NodesJson.Type <> JTokenType.Array Then Return Nothing
+            If NodesJson.Count = 0 Then
+                Logger.Warn("OTA 下发的节点列表为空，改用内置节点")
+                Return Nothing
+            End If
+            '签名覆盖「名称/地址/到期时间」三项且与顺序相关：这里不能重排、不能过滤
+            Dim Parts As New List(Of String)
+            Parts.Add("link")
+            For Each Node As JToken In NodesJson
+                If Node Is Nothing OrElse Node.Type <> JTokenType.[Object] Then Continue For
+                Parts.Add(String.Join(Chr(31).ToString(), {
+                    If(Node("name")?.ToString(), ""),
+                    If(Node("address")?.ToString(), ""),
+                    If(Node("expiresAt")?.ToString(), "")}))
+            Next
+            VerifyRsaSignature(Encoding.UTF8.GetBytes(String.Join(Chr(31).ToString(), Parts)),
+                               SigText, "节点列表")
+            Logger.Info($"节点列表签名校验通过，共 {NodesJson.Count} 个")
+            Return CType(NodesJson, JArray)
+        Catch ex As Exception
+            Logger.Warn(ex, "获取联机节点列表失败，改用内置节点")
+            Return Nothing
+        End Try
+    End Function
+
+    ''' <summary>用户选定的节点地址；空字符串表示「自动（全部可用节点）」。</summary>
+    Friend Function LinkSelectedNode() As String
+        Return If(Settings.Get(Of String)("LinkSelectedNode"), "").Trim
+    End Function
+
+    ''' <summary>记住用户选择的节点地址。</summary>
+    Friend Sub SetLinkSelectedNode(Address As String)
+        Settings.Set("LinkSelectedNode", If(Address, "").Trim)
+    End Sub
+    ''' <summary>
+    ''' 未过期的内置节点地址列表（若用户选定了某个节点，只返回那一个）。
     ''' </summary>
     Friend Function LinkNodePeers() As List(Of String)
+        Dim Selected As String = LinkSelectedNode()
+        Dim Result = CollectLinkPeers(Selected)
+        '选中的节点被删掉、过期或改名了：退回全部可用节点，
+        '不能让用户卡在一个已经不存在的选择上连不上房间。
+        If Result.Count = 0 AndAlso Selected.Length > 0 Then
+            Logger.Warn($"选定的节点 {Selected} 已不可用，退回全部可用节点")
+            Result = CollectLinkPeers(String.Empty)
+        End If
+        Return Result
+    End Function
+
+    ''' <summary>按指定地址收集可用节点；地址为空表示全部。</summary>
+    Private Function CollectLinkPeers(OnlyAddress As String) As List(Of String)
         Dim Result As New List(Of String)
         For Each Node In LinkNodes()
             If IsLinkNodeExpired(Node) Then Continue For
             Dim Addr As String = If(Node?("address")?.ToString(), "").Trim
-            If Addr.Length > 0 Then Result.Add(Addr)
+            If Addr.Length = 0 Then Continue For
+            If OnlyAddress.Length > 0 AndAlso
+               Not String.Equals(Addr, OnlyAddress, StringComparison.OrdinalIgnoreCase) Then Continue For
+            Result.Add(Addr)
         Next
         Return Result
     End Function
@@ -587,6 +652,9 @@ Friend Module ModSecret
         '而是由用户在「设置 → 联机 → 自定义节点」中填写。
         'Peers 留空时联机页会提示用户去填写，不会带着空地址强行启动 EasyTier。
         'EasyTier 为 LGPL-3.0，二进制直接从官方 GitHub Release 下载，不随本仓库分发。
+        '优先用 OTA 下发的节点列表（已验签），拿不到就退回编译期内置的。
+        Dim LinkNodeList As JArray = LoadLinkNodesFromOta()
+        If LinkNodeList Is Nothing Then LinkNodeList = LinkNodesDefault()
         ServerConfig = New JObject(
             New JProperty("Link", New JObject(
                 New JProperty("EasyTierVersion", 2),
@@ -599,7 +667,7 @@ Friend Module ModSecret
                 New JProperty("RandomPeer", 0),
                 New JProperty("DiscoverPeerId", 0),
                 New JProperty("DiscoverPeer", ""),
-                New JProperty("Nodes", LinkNodesDefault()))))
+                New JProperty("Nodes", LinkNodeList))))
         Try
             Dim Raw As String = NetRequestByClient(OtaBase & "notice.json", RequireJson:=False)
             Dim Obj As JObject = JObject.Parse(Raw)

@@ -1,4 +1,4 @@
-﻿Imports System.Diagnostics
+Imports System.Diagnostics
 Imports System.Net.Sockets
 Imports System.Threading.Tasks
 Imports System.Windows.Media
@@ -54,6 +54,7 @@ Public Class PageSetupLink
         _nodeAddresses.Clear()
 
         Dim Nodes As List(Of JObject) = LinkNodes()
+        RefreshNodeCombo(Nodes)
         If Nodes.Count = 0 Then
             PanNodes.Children.Add(New TextBlock With {
                 .Text = "没有内置节点", .Opacity = 0.6, .Margin = New Thickness(0, 6, 0, 0)})
@@ -160,6 +161,54 @@ Public Class PageSetupLink
             Return -1
         End Try
     End Function
+
+    '==========================================================
+    '  节点选择
+    '==========================================================
+
+    Private _nodeComboLoading As Boolean = False
+    Private ReadOnly _comboAddresses As New List(Of String)
+
+    ''' <summary>重建「使用节点」下拉框。索引 0 是「自动」，其后每个可用节点一项。</summary>
+    Private Sub RefreshNodeCombo(Nodes As List(Of JObject))
+        If ComboNode Is Nothing Then Return
+        _nodeComboLoading = True
+        Try
+            ComboNode.Items.Clear()
+            _comboAddresses.Clear()
+            ComboNode.Items.Add(New MyComboBoxItem With {.Content = "自动（所有可用节点）"})
+            _comboAddresses.Add("")
+            Dim Selected As String = LinkSelectedNode()
+            Dim SelectedIndex As Integer = 0
+            For Each Node As JObject In Nodes
+                Dim Addr As String = If(Node?("address")?.ToString(), "").Trim
+                If Addr.Length = 0 Then Continue For
+                Dim ItemText As String = If(Node?("name")?.ToString(), Addr)
+                If IsLinkNodeExpired(Node) Then ItemText &= "（已过期）"
+                ComboNode.Items.Add(New MyComboBoxItem With {.Content = ItemText})
+                _comboAddresses.Add(Addr)
+                If Selected.Length > 0 AndAlso
+                   Addr.Equals(Selected, StringComparison.OrdinalIgnoreCase) Then
+                    SelectedIndex = _comboAddresses.Count - 1
+                End If
+            Next
+            ComboNode.SelectedIndex = SelectedIndex
+        Finally
+            _nodeComboLoading = False
+        End Try
+    End Sub
+
+    ''' <summary>选定某个节点就记住它；「自动」记为空字符串。</summary>
+    Private Sub ComboNode_SelectionChanged(sender As Object, e As SelectionChangedEventArgs) Handles ComboNode.SelectionChanged
+        If _nodeComboLoading Then Return
+        Dim Index As Integer = ComboNode.SelectedIndex
+        If Index < 0 OrElse Index >= _comboAddresses.Count Then Return
+        Dim Addr As String = _comboAddresses(Index)
+        If Addr = LinkSelectedNode() Then Return
+        SetLinkSelectedNode(Addr)
+        Hint(If(Addr.Length = 0, "已改为自动选择节点", "已选定节点，下次进入联机页面时生效"),
+             HintType.Green, False)
+    End Sub
 
     '初始化
     Public Sub Reset()

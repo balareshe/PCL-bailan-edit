@@ -1,4 +1,4 @@
-﻿<local:MyPageRight
+<local:MyPageRight
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:local="clr-namespace:PCL" xmlns:d="http://schemas.microsoft.com/expression/blend/2008" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
@@ -8,6 +8,15 @@
         <StackPanel x:Name="PanMain" Margin="25,10">
             <local:MyCard Margin="0,15,0,0" Title="节点">
                 <StackPanel Margin="25,40,25,20">
+                    <Grid Margin="0,0,0,12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="1*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock VerticalAlignment="Center" HorizontalAlignment="Left" Text="使用节点" Margin="0,0,25,0" />
+                        <local:MyComboBox x:Name="ComboNode" Grid.Column="1"
+                            ToolTip="选择本机联机时使用的中继节点。&#xa;&#xa;「自动」会尝试所有未过期的节点；选定某一个后只使用它。&#xa;&#xa;节点列表由服务端下发，更换节点不需要重新发布启动器。" />
+                    </Grid>
                     <Grid Margin="0,0,0,2">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="2*" />
@@ -20,7 +29,7 @@
                     </Grid>
                     <StackPanel x:Name="PanNodes" />
                     <TextBlock x:Name="LabNodeNote" Margin="0,12,0,0" TextWrapping="Wrap" Opacity="0.65" FontSize="12"
-                               Text="默认使用上面未过期的节点，延迟每 10 秒刷新一次。可在「高级设置 → 自定义节点」里填写自己的节点地址，填写后将只使用你填写的地址。" />
+                               Text="节点列表由服务端下发，「使用节点」里可以指定只用某一个，默认自动使用所有未过期的节点。延迟每 10 秒刷新一次。在「高级设置 → 自定义节点」里填了地址后，将只使用你填写的地址。" />
                 </StackPanel>
             </local:MyCard>
             <local:MyCard x:Name="CardArgument" Margin="0,15" Title="连接选项">
