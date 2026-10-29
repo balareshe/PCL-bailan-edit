@@ -743,10 +743,15 @@ Friend Module ModSecret
     ''' </summary>
     Private Sub MigrateLinkSelection()
         Try
+            '只跑一次：否则用户在「自动」模式下随手填了自定义地址，下次启动会被
+            '悄悄切成自建并生效——那等于「自动模式里填了也能用」，与设计不符。
+            '标记置位后，想用自建必须自己在下拉框里选。
+            If Settings.Get(Of Integer)("LinkNodeMigratedV1") = 1 Then Return
+            Settings.Set("LinkNodeMigratedV1", 1)
             If LinkSelectedNode().Length > 0 Then Return
             If LinkCustomPeerList().Count = 0 Then Return
             SetLinkSelectedNode(LinkCustomSentinel)
-            Logger.Info("检测到已填写自定义节点，已自动把「使用节点」切换为自建节点")
+            Logger.Info("检测到已填写自定义节点，已自动把「使用节点」切换为自建节点（仅迁移一次）")
         Catch ex As Exception
             Logger.Warn(ex, "迁移联机节点选择失败")
         End Try
